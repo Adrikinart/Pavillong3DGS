@@ -1,0 +1,54 @@
+# High-quality final object reconstruction: higher res, more iters, stronger
+# densification and validation. Slower; use after object_default looks good.
+object_name: casque_saint_georges_hq
+capture_mode: orbit
+profile:
+  name: rtxpro
+  nodelist: GPURACK5      # big-VRAM Blackwell node
+videos:
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/102A2544.MOV
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/102A2545.MOV
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/IMG_8280.MOV
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/IMG_8281.MOV
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 3.0
+  max_frames: 700
+  resize_long_edge: 2000
+
+filter_frames:
+  enabled: true
+  blur_var_min: 80.0
+
+generate_masks:
+  enabled: true
+  backend: rembg
+
+run_colmap:
+  matcher: sequential
+  camera_model: OPENCV
+  single_camera: false
+  use_masks: true
+
+normalize_scene:
+  method: cameras
+
+split_dataset:
+  strategy: pose_aware
+
+train:
+  backend: gsplat
+  max_iterations: 60000
+  sh_degree: 3
+  use_masks: true
+  antialiasing: true
+  pose_optimization: true
+  appearance_embedding: true
+  checkpoint_interval: 10000
+  validation_interval: 2000
+  densification:
+    start_iteration: 500
+    stop_iteration: 30000
+    interval: 100
+    cap_max: 3000000

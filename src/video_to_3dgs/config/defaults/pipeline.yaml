@@ -1,0 +1,85 @@
+# Shipped baseline defaults. User configs and profiles override these.
+# Every key here has a matching typed default in config/schema.py; this file
+# makes the effective baseline explicit and greppable.
+
+capture_mode: orbit
+
+storage:
+  runs_root: experiments/runs
+  scratch_root: auto
+  cache_root: auto
+
+profile:
+  name: local
+  scheduler: auto
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 2.0
+  max_frames: 400
+  min_frames: 40
+  resize_long_edge: 1600
+  output_format: jpg
+  jpeg_quality: 95
+  honor_rotation: true
+
+filter_frames:
+  enabled: true
+  blur_var_min: 60.0
+  min_kept: 30
+
+generate_masks:
+  enabled: false
+  backend: rembg
+
+run_colmap:
+  matcher: sequential
+  camera_model: OPENCV
+  single_camera: true
+  use_gpu: false
+  sequential_overlap: 10
+  loop_detection: true
+  undistort: true
+
+validate_colmap:
+  minimum_registration_ratio: 0.70
+  maximum_mean_reprojection_error_px: 2.0
+  minimum_sparse_points: 1000
+  hard_fail: false
+
+normalize_scene:
+  method: cameras
+
+split_dataset:
+  strategy: pose_aware
+  train_fraction: 0.80
+  validation_fraction: 0.10
+  test_fraction: 0.10
+
+train:
+  backend: gsplat
+  max_iterations: 30000
+  sh_degree: 3
+  ssim_lambda: 0.2
+  use_masks: true
+  mixed_precision: true
+  antialiasing: true
+  checkpoint_interval: 5000
+  validation_interval: 2000
+  densification:
+    strategy: default
+    start_iteration: 500
+    stop_iteration: 15000
+    interval: 100
+
+evaluate:
+  splits: [test]
+  compute_lpips: true
+  masked_metrics: true
+
+export:
+  formats: [ply, cameras, transforms]
+
+monitoring:
+  tensorboard: true
+  gpu_sample_interval_s: 15.0

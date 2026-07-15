@@ -1,0 +1,16 @@
+# Cluster profile: rtx40 partition (2x RTX 4090 Ada, 24 GB each).
+profile:
+  name: rtx40
+  scheduler: slurm
+  partition: rtx40
+  nodelist: GPURACK3
+  gpu_type: RTX_4090
+  cuda_arch: "8.9"       # sm_89 (Ada)
+  torch_cuda: cu128
+  gpus: 1
+  cpus_per_task: 16
+  memory_gb: 48
+  time_limit: "24:00:00"
+  signal_before_timeout_seconds: 120
+  requeue: true
+  env_prefix: /home/${USER}/envs/v2gs

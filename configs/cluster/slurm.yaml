@@ -1,0 +1,6 @@
+# Slurm submission defaults. Overlay onto a GPU profile (rtxpro/rtx50/...).
+profile:
+  scheduler: slurm
+  signal_before_timeout_seconds: 120
+  requeue: true
+  time_limit: "24:00:00"

@@ -1,0 +1,16 @@
+# Cluster profile: rtx30 partition (2x RTX 3090 Ampere, 24 GB each).
+profile:
+  name: rtx30
+  scheduler: slurm
+  partition: rtx30
+  nodelist: GPURACK1
+  gpu_type: RTX_3090
+  cuda_arch: "8.6"       # sm_86 (Ampere)
+  torch_cuda: cu128
+  gpus: 1
+  cpus_per_task: 12
+  memory_gb: 48
+  time_limit: "24:00:00"
+  signal_before_timeout_seconds: 120
+  requeue: true
+  env_prefix: /home/${USER}/envs/v2gs

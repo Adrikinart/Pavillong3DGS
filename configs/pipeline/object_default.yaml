@@ -1,0 +1,43 @@
+# Balanced object reconstruction (static object, camera orbits). Masks ON.
+# Point this at your object's video(s). Example uses the "casque" capture.
+object_name: casque_saint_georges
+capture_mode: orbit
+profile:
+  name: rtxpro
+videos:
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/102A2544.MOV
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/102A2545.MOV
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 2.0
+  max_frames: 400
+  resize_long_edge: 1600
+
+filter_frames:
+  enabled: true
+
+generate_masks:
+  enabled: true
+  backend: rembg
+  minimum_area_fraction: 0.03
+  maximum_area_fraction: 0.90
+
+run_colmap:
+  matcher: sequential
+  camera_model: OPENCV
+  single_camera: true
+  use_masks: true
+
+normalize_scene:
+  method: cameras
+  exclude_pedestal: false
+
+split_dataset:
+  strategy: pose_aware
+
+train:
+  backend: gsplat
+  max_iterations: 30000
+  use_masks: true
+  antialiasing: true

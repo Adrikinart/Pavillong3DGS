@@ -1,0 +1,66 @@
+# Smallest meaningful end-to-end run. Verifies the whole pipeline quickly on a
+# single Pavillon clip: few downscaled frames, short training, frequent val/ckpt.
+object_name: pavillon_smoke
+capture_mode: orbit
+profile:
+  name: rtxpro
+  nodelist: GPURACK5
+videos:
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/Pavillon/IMG_9648.MOV   # smallest clip
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 1.0
+  max_frames: 40
+  min_frames: 20
+  resize_long_edge: 1000
+
+filter_frames:
+  enabled: true
+  blur_var_min: 40.0
+  min_kept: 20
+
+generate_masks:
+  enabled: false
+
+run_colmap:
+  matcher: sequential
+  camera_model: OPENCV
+  single_camera: true
+  use_gpu: false
+  sequential_overlap: 10
+
+validate_colmap:
+  minimum_registration_ratio: 0.50   # lenient for a tiny smoke set
+  minimum_sparse_points: 300
+  hard_fail: false
+
+normalize_scene:
+  method: points
+
+split_dataset:
+  strategy: periodic
+  holdout_every: 6
+
+train:
+  backend: gsplat
+  max_iterations: 1500
+  image_downscale: 1
+  sh_degree: 1
+  use_masks: false
+  checkpoint_interval: 500
+  validation_interval: 500
+  val_render_count: 2
+  densification:
+    start_iteration: 200
+    stop_iteration: 1000
+    interval: 100
+    cap_max: 300000
+
+evaluate:
+  splits: [test]
+  compute_lpips: true
+  make_orbit_video: false
+
+monitoring:
+  gpu_sample_interval_s: 5.0

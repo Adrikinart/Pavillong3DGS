@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video_to_3dgs"
+version = "0.1.0"
+description = "Reproducible video -> 3D Gaussian Splatting reconstruction framework for object/scene capture on a Slurm GPU cluster."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "AdrienK" }]
+
+# NOTE: torch / gsplat / colmap are intentionally NOT listed here.
+# They require a CUDA-matched (cu128, sm_120 / Blackwell) install and are
+# provisioned through `environment.yml` + `scripts/bootstrap_environment.sh`.
+# Keeping them out of `pip install .` lets the CPU login-node env install the
+# pure-Python core for tests/orchestration without pulling GPU wheels.
+dependencies = [
+    "pydantic>=2.5",
+    "pyyaml>=6.0",
+    "numpy>=1.24",
+    "pillow>=10.0",
+    "tqdm>=4.65",
+]
+
+[project.optional-dependencies]
+# Installed by the bootstrap script into the GPU env (documented, not resolved here).
+gpu = [
+    "tensorboard>=2.15",
+    "lpips>=0.1.4",
+    "opencv-python-headless>=4.8",
+    "rembg>=2.0",
+    "pillow-heif>=0.13",
+    "matplotlib>=3.7",
+    "scipy>=1.10",
+]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+]
+
+[project.scripts]
+video-to-3dgs = "video_to_3dgs.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+video_to_3dgs = ["config/defaults/*.yaml", "config/defaults/profiles/*.yaml", "slurm/templates/*.j2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

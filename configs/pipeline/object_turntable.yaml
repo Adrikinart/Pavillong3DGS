@@ -1,0 +1,45 @@
+# Turntable capture: the OBJECT rotates, camera is (mostly) fixed. This breaks
+# the standard "static scene, moving camera" SfM assumption, so masks are
+# MANDATORY (background must be removed or SfM locks onto the static background
+# instead of the rotating object). COLMAP runs on masked features only.
+object_name: object_turntable
+capture_mode: turntable
+profile:
+  name: rtxpro
+videos: []   # set to your turntable clip(s)
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 4.0
+  max_frames: 300
+
+filter_frames:
+  enabled: true
+
+generate_masks:
+  enabled: true            # MANDATORY for turntable
+  backend: rembg
+  temporal_propagation: true
+  manual_review: true
+
+run_colmap:
+  matcher: exhaustive      # no temporal ordering assumption for a turntable
+  camera_model: OPENCV
+  single_camera: true
+  use_masks: true          # mask-only features so background is ignored
+
+validate_colmap:
+  minimum_registration_ratio: 0.60
+  hard_fail: false
+
+normalize_scene:
+  method: points
+
+split_dataset:
+  strategy: pose_aware
+
+train:
+  backend: gsplat
+  max_iterations: 30000
+  use_masks: true
+  antialiasing: true

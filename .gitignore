@@ -1,0 +1,72 @@
+# ------------------------------------------------------------------
+# Large data & artifacts — NEVER commit (see CLAUDE.md NFS hygiene rules)
+# ------------------------------------------------------------------
+Data/
+data/raw/
+data/processed/
+experiments/runs/
+**/checkpoints/
+**/*.pt
+**/*.ckpt
+**/*.pth
+
+# COLMAP artifacts
+**/colmap/**/*.db
+**/database.db
+**/*.db-shm
+**/*.db-wal
+**/sparse/
+**/dense/
+
+# Extracted frames / renders / masks (regenerable)
+**/frames/
+**/frames_filtered/
+**/masks/
+**/renders/
+**/rejected/
+**/*.png
+!docs/**/*.png
+!tests/fixtures/**/*.png
+
+# Video / image source media
+*.MOV
+*.mov
+*.mp4
+*.MP4
+*.HEIC
+*.heic
+*.JPG
+*.jpg
+*.jpeg
+!tests/fixtures/**
+
+# TensorBoard / logs / metrics dumps
+**/tb/
+**/tensorboard/
+**/events.out.tfevents.*
+**/*.jsonl
+!tests/fixtures/**/*.jsonl
+
+# Environment / build
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Node-local / scratch
+scratch/
+*.partial
+*.tmp
+
+# Editor
+.vscode/
+.idea/
+.DS_Store

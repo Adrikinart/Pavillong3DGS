@@ -1,0 +1,49 @@
+# Conda environment spec for the GPU training env `v2gs`.
+#
+# Blackwell (sm_120 / compute capability 12.0) requires a PyTorch build with
+# CUDA 12.8+ (cu128) wheels. tiny-cuda-nn is deliberately avoided.
+#
+# This file is the human-readable spec; `scripts/bootstrap_environment.sh`
+# performs the actual (fallback-aware) install and writes `requirements-lock.txt`.
+# Build with the fast LOCAL-disk mamba, install into an NFS prefix so GPU nodes
+# can see it:
+#   mamba env create -p /home/AdrienK/envs/v2gs -f environment.yml
+#
+name: v2gs
+channels:
+  - conda-forge
+  - nvidia
+dependencies:
+  - python=3.11
+  - pip>=24.0
+  # --- CUDA toolchain for building CUDA extensions (gsplat JIT) on sm_120 ---
+  - cuda-nvcc=12.8.*
+  - cuda-cudart-dev=12.8.*
+  - cuda-libraries-dev=12.8.*
+  - ninja
+  # --- Structure-from-Motion ---
+  - colmap            # conda-forge build; CPU SIFT works everywhere, GPU SIFT optional
+  - ffmpeg
+  # --- scientific / IO ---
+  - numpy>=1.24
+  - scipy>=1.10
+  - matplotlib>=3.7
+  - opencv>=4.8
+  - pillow>=10.0
+  - tqdm
+  - pyyaml
+  - pydantic>=2.5
+  - tensorboard>=2.15
+  - plyfile
+  - pip:
+      # PyTorch cu128 (Blackwell sm_120). Pinned loosely; bootstrap resolves the
+      # newest cu128 stable that exposes sm_120 kernels and records exact versions.
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - torch
+      - torchvision
+      - gsplat            # built from source against in-env nvcc for sm_120
+      - lpips
+      - rembg
+      - pillow-heif       # iPhone HEIC support
+      - imageio
+      - imageio-ffmpeg

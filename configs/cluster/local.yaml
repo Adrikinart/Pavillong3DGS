@@ -1,0 +1,7 @@
+# Local / interactive execution (no scheduler). Use for debugging or when
+# running directly inside an `srun` allocation.
+profile:
+  name: local
+  scheduler: local
+  gpus: 1
+  cpus_per_task: 8

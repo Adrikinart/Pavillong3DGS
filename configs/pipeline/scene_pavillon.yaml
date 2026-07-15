@@ -1,0 +1,42 @@
+# Primary target: the "Pavillon" scene (3 iPhone 14 Pro 4K HEVC clips).
+# A scene rather than a single object -> masking OFF, point-based normalization.
+object_name: pavillon
+capture_mode: orbit
+profile:
+  name: rtxpro          # train on a Blackwell node
+videos:
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/Pavillon/IMG_9647.MOV
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/Pavillon/IMG_9648.MOV
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/Pavillon/IMG_9649.MOV
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 1.5
+  max_frames: 450
+  resize_long_edge: 1600     # downscale 4K -> 1600px long edge
+
+filter_frames:
+  enabled: true
+  blur_var_min: 50.0
+
+generate_masks:
+  enabled: false             # scene: no object mask
+
+run_colmap:
+  matcher: sequential
+  camera_model: OPENCV
+  single_camera: false       # 3 clips may differ slightly; per-image intrinsics safer
+  sequential_overlap: 15
+  loop_detection: true
+
+normalize_scene:
+  method: points
+
+split_dataset:
+  strategy: pose_aware
+
+train:
+  backend: gsplat
+  max_iterations: 30000
+  use_masks: false
+  antialiasing: true

@@ -1,0 +1,15 @@
+# Cluster profile: the CPU-only login node (isiacluster). For preprocessing
+# stages (inspect/extract/filter) and tests only — no GPU here.
+profile:
+  name: login-cpu
+  scheduler: local
+  partition: null
+  gpu_type: null
+  cuda_arch: null
+  torch_cuda: null
+  gpus: 0
+  cpus_per_task: 8
+  memory_gb: 16
+  time_limit: "01:00:00"
+  requeue: false
+  env_prefix: /home/${USER}/envs/v2gs
