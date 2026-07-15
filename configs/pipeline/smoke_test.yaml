@@ -10,10 +10,10 @@ videos:
 
 extract_frames:
   strategy: fixed_fps
-  target_fps: 1.0
-  max_frames: 40
-  min_frames: 20
-  resize_long_edge: 1000
+  target_fps: 2.0          # denser sampling -> more overlap for COLMAP
+  max_frames: 80
+  min_frames: 30
+  resize_long_edge: 1600   # keep enough texture/features to reconstruct
 
 filter_frames:
   enabled: true

@@ -21,21 +21,13 @@ mkdir -p experiments/slurm_logs
 CONFIG="${1:-${V2GS_CONFIG:-configs/pipeline/scene_pavillon.yaml}}"
 ENV_PREFIX="${V2GS_ENV_PREFIX:-/home/$USER/envs/v2gs}"
 
-# node-local scratch for CUDA-extension builds and caches (avoid recompiling / NFS)
-export TORCH_EXTENSIONS_DIR="/var/tmp/$USER/torch_ext"
-export PIP_CACHE_DIR="/var/tmp/$USER/pip_cache"
-export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-}"   # set by inspect-env if empty
-mkdir -p "$TORCH_EXTENSIONS_DIR" "$PIP_CACHE_DIR"
-
-export PATH="$ENV_PREFIX/bin:$PATH"
+# Prepare env (PATH + CUDA_HOME/CPATH so gsplat's CUDA ext can JIT-build, plus
+# node-local TORCH_EXTENSIONS_DIR/scratch). Single source: scripts/_activate_env.sh
+source "$(dirname "$0")/../_activate_env.sh"
+export PIP_CACHE_DIR="/var/tmp/$USER/pip_cache"; mkdir -p "$PIP_CACHE_DIR"
 echo "[train.sbatch] host=$(hostname) job=$SLURM_JOB_ID config=$CONFIG env=$ENV_PREFIX"
 nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv,noheader || true
-
-# detect arch for gsplat JIT if not preset
-if [ -z "$TORCH_CUDA_ARCH_LIST" ]; then
-  export TORCH_CUDA_ARCH_LIST="$("$ENV_PREFIX/bin/python" -c "import torch;p=torch.cuda.get_device_properties(0);print(f'{p.major}.{p.minor}')" 2>/dev/null || echo '')"
-fi
-echo "[train.sbatch] TORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST"
+echo "[train.sbatch] TORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST CUDA_HOME=$CUDA_HOME"
 
 # run-all skips already-completed preprocessing and proceeds through train/eval/export.
 srun "$ENV_PREFIX/bin/python" -m video_to_3dgs.cli run-all --config "$CONFIG" --verbose

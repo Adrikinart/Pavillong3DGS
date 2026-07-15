@@ -35,15 +35,9 @@ dependencies:
   - pydantic>=2.5
   - tensorboard>=2.15
   - plyfile
-  - pip:
-      # PyTorch cu128 (Blackwell sm_120). Pinned loosely; bootstrap resolves the
-      # newest cu128 stable that exposes sm_120 kernels and records exact versions.
-      - --extra-index-url https://download.pytorch.org/whl/cu128
-      - torch
-      - torchvision
-      - gsplat            # built from source against in-env nvcc for sm_120
-      - lpips
-      - rembg
-      - pillow-heif       # iPhone HEIC support
-      - imageio
-      - imageio-ffmpeg
+  # NOTE: the pip layer (torch cu128 + gsplat + ...) is intentionally NOT here.
+  # On isiacluster the login-node NFS storm makes unpacking a ~3 GB torch wheel
+  # into /home pathologically slow (~200 KB/s vs ~250 MB/s on a GPU node). So
+  # scripts/bootstrap_environment.sh installs the pip layer via `srun` on a GPU
+  # node (healthy NFS + internet + nvcc for the gsplat sm_120 build). The exact
+  # package set lives in that script (V2GS_PIP_PKGS) as the single source.

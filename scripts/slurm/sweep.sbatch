@@ -24,8 +24,7 @@ cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p experiments/slurm_logs
 CONFIG="${1:-${V2GS_CONFIG:-configs/pipeline/scene_pavillon.yaml}}"
 ENV_PREFIX="${V2GS_ENV_PREFIX:-/home/$USER/envs/v2gs}"
-export PATH="$ENV_PREFIX/bin:$PATH"
-export TORCH_EXTENSIONS_DIR="/var/tmp/$USER/torch_ext"; mkdir -p "$TORCH_EXTENSIONS_DIR"
+source "$(dirname "$0")/../_activate_env.sh"
 
 # one --set override per array index (seed sweep example)
 VARIANTS=(

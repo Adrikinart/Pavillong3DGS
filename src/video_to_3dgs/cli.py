@@ -111,7 +111,7 @@ def _prepare(ctx: StageContext) -> None:
     """Initialize a run: freeze config, capture provenance, init manifest header."""
     from .core.provenance import software_block
 
-    freeze_config(ctx.config, ctx.layout)
+    freeze_config(ctx.config, ctx.layout, force=ctx.force)
     software, freeze_txt = software_block(ctx.repo_root)
     (ctx.layout.logs_dir / "pip_freeze.txt").write_text(freeze_txt or "")
     ctx.manifest.init_header(dataset_id=ctx.layout.dataset_id,

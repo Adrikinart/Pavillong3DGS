@@ -60,6 +60,33 @@ fi
 PY="$ENV_PREFIX/bin/python"
 log "python: $($PY --version 2>&1)"
 
+# --- pip layer (torch cu128 + gsplat + ...) ------------------------------------
+# Heavy /home writes are pathologically slow on the storming login node, so run
+# this on a GPU node (healthy NFS + internet + nvcc) when Slurm is available and
+# we have no local GPU. Single source of truth for the pip package set:
+V2GS_PIP_PKGS="${V2GS_PIP_PKGS:-torch torchvision gsplat lpips rembg pillow-heif imageio imageio-ffmpeg}"
+V2GS_GPU_PARTITION="${V2GS_GPU_PARTITION:-rtxpro}"
+V2GS_GPU_NODE="${V2GS_GPU_NODE:-GPURACK5}"
+# cu128 as the PRIMARY index so torch resolves to the cu128 build that MATCHES
+# the in-env nvcc 12.8 (a cu130 torch + nvcc 12.8 mismatch breaks the gsplat build).
+CU_INDEX="https://download.pytorch.org/whl/cu128"
+
+pip_layer_cmd="source '$REPO_ROOT/scripts/_activate_env.sh'; \
+'$ENV_PREFIX/bin/pip' install --index-url $CU_INDEX --extra-index-url https://pypi.org/simple $V2GS_PIP_PKGS"
+
+if command -v nvidia-smi >/dev/null 2>&1; then
+    log "local GPU detected -> installing pip layer locally"
+    bash -lc "$pip_layer_cmd" 2>&1 | tee -a "$LOG"
+elif command -v srun >/dev/null 2>&1; then
+    log "no local GPU + Slurm present -> installing pip layer on $V2GS_GPU_NODE ($V2GS_GPU_PARTITION)"
+    log "(this avoids the login-node NFS storm; gsplat builds for sm_120 on the GPU node)"
+    srun --partition="$V2GS_GPU_PARTITION" --nodelist="$V2GS_GPU_NODE" --gres=gpu:1 \
+         --time=01:00:00 --cpus-per-task=8 bash -lc "$pip_layer_cmd" 2>&1 | tee -a "$LOG"
+else
+    log "WARNING: no GPU and no Slurm -> installing pip layer locally (may be very slow on NFS)"
+    bash -lc "$pip_layer_cmd" 2>&1 | tee -a "$LOG"
+fi
+
 # --- install the framework itself (editable, pure-python core) -----------------
 log "installing video_to_3dgs (editable)"
 "$ENV_PREFIX/bin/pip" install -e "$REPO_ROOT" --no-deps 2>&1 | tee -a "$LOG"

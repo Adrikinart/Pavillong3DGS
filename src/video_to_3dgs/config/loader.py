@@ -131,21 +131,25 @@ def make_layout(cfg: PipelineConfig, repo_root: Path, dataset_id: str) -> RunLay
     return RunLayout(runs_root=runs_root, dataset_id=dataset_id)
 
 
-def freeze_config(cfg: PipelineConfig, layout: RunLayout) -> None:
-    """Write config_resolved.yaml if absent. On re-run, warn on drift but keep the
-    frozen file authoritative (a mid-run source edit must not silently change semantics)."""
+def freeze_config(cfg: PipelineConfig, layout: RunLayout, force: bool = False) -> None:
+    """Write config_resolved.yaml if absent. On re-run, keep the frozen file
+    authoritative (a mid-run source edit must not silently change semantics) and
+    warn on drift — unless ``force`` is set, which re-freezes from the current
+    sources (``prepare --force`` / ``run-all --force``)."""
     from ..core.logging import get_logger
 
     layout.run_dir.mkdir(parents=True, exist_ok=True)
     target = layout.config_resolved
     payload = yaml.safe_dump(cfg.model_dump(mode="json"), sort_keys=False)
-    if target.exists():
+    if target.exists() and not force:
         existing = target.read_text(encoding="utf-8")
         if existing.strip() != payload.strip():
             get_logger("config").warning(
                 "resolved config differs from frozen %s; frozen file is authoritative. "
-                "Use --force on affected stages to apply changes.", target)
+                "Re-run with --force to apply the edited config.", target)
         return
+    if target.exists() and force:
+        get_logger("config").info("re-freezing config (--force) at %s", target)
     tmp = target.with_suffix(".yaml.tmp")
     tmp.write_text(payload, encoding="utf-8")
     os.replace(tmp, target)

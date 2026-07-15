@@ -17,6 +17,15 @@ logs under `$TORCH_EXTENSIONS_DIR`.
 → Known NFS storm. Use the local-disk mamba (`scripts/bootstrap_environment.sh`
 does this) as the solver; install the env into the NFS prefix so GPU nodes see it.
 
+**The pip install of torch crawls (~200 KB/s) on the login node.**
+→ Not the network — the ~3 GB torch cu128 wheel downloads fine; the login-node
+NFS storm throttles *unpacking thousands of files into `/home`*. Measured: a GPU
+node writes the same `/home` at ~250 MB/s (~1000× faster). `bootstrap_environment.sh`
+therefore installs the pip layer (torch/gsplat/…) via `srun` on a GPU node
+(`V2GS_GPU_NODE`, default GPURACK5) — healthy NFS + internet + `nvcc` for the
+gsplat sm_120 build. If you must install from the login node, expect hours, or
+`pip download` the wheels first and `pip install --no-index --find-links` on a GPU node.
+
 ## COLMAP
 **All COLMAP attempts fail / few images registered.**
 → Check `colmap/validation_report.json` and `colmap/trajectory.png`. Common

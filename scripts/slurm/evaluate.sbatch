@@ -17,7 +17,7 @@ mkdir -p experiments/slurm_logs
 CONFIG="${1:-${V2GS_CONFIG:-configs/pipeline/scene_pavillon.yaml}}"
 TR_ID="${2:-}"
 ENV_PREFIX="${V2GS_ENV_PREFIX:-/home/$USER/envs/v2gs}"
-export PATH="$ENV_PREFIX/bin:$PATH"
+source "$(dirname "$0")/../_activate_env.sh"
 TR_ARG=""; [ -n "$TR_ID" ] && TR_ARG="--train-run-id $TR_ID"
 srun "$ENV_PREFIX/bin/python" -m video_to_3dgs.cli evaluate --config "$CONFIG" $TR_ARG --verbose
 srun "$ENV_PREFIX/bin/python" -m video_to_3dgs.cli export   --config "$CONFIG" $TR_ARG --verbose

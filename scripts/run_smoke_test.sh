@@ -29,17 +29,13 @@ fi
 # find the `colmap` binary (invoked via subprocess), plus ffmpeg/nvcc from the env.
 echo "[smoke] 1/3 GPU environment check on ${NODE}"
 srun --partition="$PART" --nodelist="$NODE" --gres=gpu:1 --time=00:20:00 --cpus-per-task=4 \
-  bash -lc "cd $(pwd); export PATH=$ENV_PREFIX/bin:\$PATH; \
-            export TORCH_EXTENSIONS_DIR=/var/tmp/$USER/torch_ext; mkdir -p \$TORCH_EXTENSIONS_DIR; \
+  bash -lc "cd $(pwd); source scripts/_activate_env.sh; \
             $PY -m video_to_3dgs.cli inspect-env --gpu-check --out experiments/env_${NODE}.json" \
   || { echo "[smoke] GPU env check FAILED"; exit 3; }
 
 echo "[smoke] 2/3 end-to-end pipeline (run-all) on ${NODE}"
 srun --partition="$PART" --nodelist="$NODE" --gres=gpu:1 --time=02:00:00 --cpus-per-task=8 \
-  bash -lc "cd $(pwd); export PATH=$ENV_PREFIX/bin:\$PATH; \
-            export TORCH_EXTENSIONS_DIR=/var/tmp/$USER/torch_ext; mkdir -p \$TORCH_EXTENSIONS_DIR; \
-            export TMPDIR=/var/tmp/$USER; mkdir -p \$TMPDIR; \
-            export TORCH_CUDA_ARCH_LIST=\$($PY -c 'import torch;p=torch.cuda.get_device_properties(0);print(f\"{p.major}.{p.minor}\")'); \
+  bash -lc "cd $(pwd); source scripts/_activate_env.sh; \
             $PY -m video_to_3dgs.cli run-all --config $CONFIG --verbose" \
   || { echo "[smoke] pipeline FAILED"; exit 4; }
 

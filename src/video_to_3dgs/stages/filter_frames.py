@@ -195,5 +195,7 @@ class FilterFramesStage(Stage):
             im = Image.open(src).convert("RGB")
             im.thumbnail((thumb, thumb))
             sheet.paste(im, ((i % cols) * thumb, (i // cols) * thumb))
-        out = ctx.layout.frames_filtered_dir / f"contact_sheet_{name}.jpg"
-        sheet.save(out, quality=85)
+        # keep contact sheets OUT of the frame set (COLMAP globs frames_filtered/)
+        diag = ctx.layout.frames_filtered_dir / "_diagnostics"
+        diag.mkdir(parents=True, exist_ok=True)
+        sheet.save(diag / f"contact_sheet_{name}.jpg", quality=85)
