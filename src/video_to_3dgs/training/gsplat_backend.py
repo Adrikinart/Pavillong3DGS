@@ -234,12 +234,15 @@ class GsplatBackend(TrainingBackend):
         import torch
         state = torch.load(checkpoint, map_location="cpu", weights_only=False)
         p = state["params"]
+        import numpy as _np
         means = p["means"].numpy()
         scales = p["scales"].numpy()
         quats = p["quats"].numpy()
         opac = p["opacities"].numpy().reshape(-1, 1)
-        sh0 = p["sh0"].numpy().reshape(len(means), -1)
-        shN = p["shN"].numpy().reshape(len(means), -1)
+        # INRIA/standard-viewer .ply expects channel-major SH: f_dc_{0..2} then
+        # f_rest ordered [ch0 coeffs..., ch1..., ch2...]. sh0 is (N,1,3); shN (N,K-1,3).
+        sh0 = p["sh0"].numpy().reshape(len(means), -1)                 # (N,3) DC per channel
+        shN = _np.transpose(p["shN"].numpy(), (0, 2, 1)).reshape(len(means), -1)  # channel-major
         _write_gaussian_ply(out, means, scales, quats, opac, sh0, shN)
         return out
 

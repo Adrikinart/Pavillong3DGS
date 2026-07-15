@@ -8,15 +8,39 @@ bounded set of fallback configs before giving up.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
-from ..core.errors import StageExecutionError
+from ..core.errors import InputValidationError, StageExecutionError
 from ..core.scratch import ScratchContext
 from ..core.stage import Artifact, Stage, StageContext
 from .. import colmap_io
+
+
+def resolve_colmap_bin(configured: str = "colmap") -> str:
+    """Locate the colmap binary robustly.
+
+    Honors an explicit path/name if it resolves; otherwise falls back to the
+    running interpreter's env prefix (``<sys.prefix>/bin/colmap``) so the stage
+    works even when PATH does not include the env bin (a common Slurm pitfall).
+    """
+    if os.path.sep in configured or configured != "colmap":
+        if Path(configured).exists() or shutil.which(configured):
+            return configured
+    found = shutil.which(configured)
+    if found:
+        return found
+    cand = Path(sys.prefix) / "bin" / "colmap"
+    if cand.exists():
+        return str(cand)
+    raise InputValidationError(
+        "colmap binary not found on PATH nor in the env prefix "
+        f"({cand}). Install colmap into the env (conda-forge) or set "
+        "run_colmap.colmap_bin to its absolute path.")
 
 
 def _run_colmap(args: list[str], log, colmap_bin: str = "colmap") -> None:
@@ -72,8 +96,10 @@ class RunColmapStage(Stage):
     def run(self, ctx: StageContext) -> dict[str, Any]:
         c = ctx.config.run_colmap
         log = ctx.logger
+        colmap_bin = resolve_colmap_bin(c.colmap_bin)
         n_input = self._n_input_images(ctx)
-        log.info("colmap on %d images (matcher=%s gpu=%s)", n_input, c.matcher, c.use_gpu)
+        log.info("colmap=%s on %d images (matcher=%s gpu=%s)", colmap_bin, n_input,
+                 c.matcher, c.use_gpu)
 
         attempts = [{"matcher": c.matcher}]
         if c.fallback_to_exhaustive and c.matcher != "exhaustive":
@@ -101,7 +127,8 @@ class RunColmapStage(Stage):
                 sparse = scr.path(f"sparse_{i}")
                 sparse.mkdir(parents=True, exist_ok=True)
                 try:
-                    self._reconstruct(scr, db, images, sparse, mask_dir, c, att["matcher"], log)
+                    self._reconstruct(scr, db, images, sparse, mask_dir, c, att["matcher"],
+                                      log, colmap_bin)
                     model0 = sparse / "0"
                     if not (model0 / "images.bin").exists():
                         raise StageExecutionError("mapper produced no model")
@@ -131,7 +158,7 @@ class RunColmapStage(Stage):
                 _run_colmap(["image_undistorter", "--image_path", str(images),
                              "--input_path", str(chosen["sparse0"]),
                              "--output_path", str(undist), "--output_type", "COLMAP"],
-                            log, c.colmap_bin)
+                            log, colmap_bin)
                 # undistorter writes undist/images and undist/sparse
             else:
                 final_images = images
@@ -157,8 +184,8 @@ class RunColmapStage(Stage):
                     "mean_reproj_error": round(metrics.get("mean_reprojection_error") or -1, 3)}
 
     def _reconstruct(self, scr, db: Path, images: Path, sparse: Path, mask_dir,
-                     c, matcher: str, log) -> None:
-        cb = c.colmap_bin
+                     c, matcher: str, log, colmap_bin: str) -> None:
+        cb = colmap_bin
         gpu = "1" if c.use_gpu else "0"
         feat = ["feature_extractor", "--database_path", str(db), "--image_path", str(images),
                 "--ImageReader.camera_model", c.camera_model,
