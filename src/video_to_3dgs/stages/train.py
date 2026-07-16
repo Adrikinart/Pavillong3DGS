@@ -63,6 +63,15 @@ class TrainStage(Stage):
         ckdir.mkdir(parents=True, exist_ok=True)
         fp_file.write_text(cur_fp)
 
+        # convenience pointer to the most recent training (easy to find/monitor)
+        latest = ctx.layout.trainings_dir / "latest"
+        try:
+            if latest.is_symlink() or latest.exists():
+                latest.unlink()
+            latest.symlink_to(tr)
+        except OSError:
+            (ctx.layout.trainings_dir / "latest.txt").write_text(tr)
+
         ctx.logger.info("training backend=%s run_id=%s", ctx.config.train.backend, tr)
         backend = get_backend(ctx.config.train.backend)
         backend.validate_env()

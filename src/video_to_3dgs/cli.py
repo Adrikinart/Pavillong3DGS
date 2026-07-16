@@ -109,9 +109,32 @@ def _runs_root(args) -> Path:
     return REPO_ROOT / "experiments" / "runs"
 
 
+def _make_train_run_id(cfg) -> str:
+    """Descriptive, timestamped training-run id so each experiment gets its own
+    directory (no overwrite) and is identifiable at a glance, e.g.
+    ``gsplat_glomap_30k_20260716-153045``."""
+    from datetime import datetime
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return (f"{cfg.train.backend}_{cfg.run_colmap.mapper_backend}_"
+            f"{cfg.train.max_iterations // 1000}k_{stamp}")
+
+
 def _prepare(ctx: StageContext) -> None:
     """Initialize a run: freeze config, capture provenance, init manifest header."""
     from .core.provenance import software_block
+
+    # Bake a descriptive, timestamped train_run_id into the frozen config (once),
+    # unless the user pinned one. This is generated only when we will actually
+    # (re)write the frozen config, so it stays stable across stages/processes.
+    will_write = ctx.force or not ctx.layout.config_resolved.exists()
+    if (will_write and ctx.config.train.train_run_id is None
+            and not ctx.params.get("train_run_id")):
+        rid = _make_train_run_id(ctx.config)
+        data = ctx.config.model_dump(mode="python")
+        data["train"]["train_run_id"] = rid
+        from .config.schema import PipelineConfig
+        ctx.config = PipelineConfig.model_validate(data)
 
     freeze_config(ctx.config, ctx.layout, force=ctx.force)
     software, freeze_txt = software_block(ctx.repo_root)

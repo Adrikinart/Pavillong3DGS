@@ -113,26 +113,56 @@ class EvaluateStage(Stage):
     def _append_registry(self, ctx: StageContext, tr: str, results: dict[str, Any]) -> None:
         import csv
 
+        from datetime import datetime, timezone
+
         reg = ctx.repo_root / "experiments" / "registry.csv"
         reg.parent.mkdir(parents=True, exist_ok=True)
         primary = ctx.config.evaluate.splits[0] if ctx.config.evaluate.splits else "test"
         ps = results["splits"].get(primary, {})
+        colmap = {}
+        try:
+            from ..core.atomicio import read_json
+            sfm = ctx.layout.colmap_dir / "sfm_stats.json"
+            colmap = read_json(sfm) if sfm.exists() else {}
+        except Exception:
+            colmap = {}
         row = {
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "run_id": tr, "dataset_id": ctx.layout.dataset_id,
-            "backend": ctx.config.train.backend, "git_commit": _git(ctx),
-            "gpu_model": ctx.config.profile.gpu_type or "", "num_gaussians": results["model"]["n_gaussians"],
+            "backend": ctx.config.train.backend,
+            "mapper_backend": ctx.config.run_colmap.mapper_backend,
+            "max_iterations": ctx.config.train.max_iterations,
+            "n_registered": colmap.get("n_registered_images"),
+            "registration_ratio": colmap.get("registration_ratio"),
+            "num_gaussians": results["model"]["n_gaussians"],
             "psnr": ps.get("psnr"), "ssim": ps.get("ssim"), "lpips": ps.get("lpips"),
             "render_fps": ps.get("render_fps"),
-            "peak_vram_bytes": results["model"]["peak_vram_bytes"],
+            "peak_vram_gb": round((results["model"]["peak_vram_bytes"] or 0) / 1e9, 2),
+            "gpu_model": ctx.config.profile.gpu_type or "", "git_commit": _git(ctx),
+            "config_resolved": str(ctx.layout.config_resolved),
             "checkpoint_path": results["checkpoint"],
             "report_path": str(ctx.layout.report_dir(tr) / "report.md"),
         }
-        exists = reg.exists()
-        with open(reg, "a", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=list(row.keys()))
-            if not exists:
-                w.writeheader()
-            w.writerow(row)
+        _append_row(reg, row)
+
+
+def _append_row(reg, row: dict) -> None:
+    """Append one row to the CSV registry; if the header changed, rotate the old
+    file to .bak and start fresh (so the schema can evolve cleanly)."""
+    import csv
+
+    fieldnames = list(row.keys())
+    header = ",".join(fieldnames)
+    if reg.exists():
+        first = reg.read_text(encoding="utf-8").splitlines()[:1]
+        if first and first[0].strip() != header:
+            reg.rename(reg.with_suffix(".csv.bak"))
+    write_header = not reg.exists()
+    with open(reg, "a", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        if write_header:
+            w.writeheader()
+        w.writerow(row)
 
 
 def _git(ctx: StageContext) -> str:

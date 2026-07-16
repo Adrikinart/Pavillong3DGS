@@ -40,10 +40,22 @@ experiments/runs/<dataset_id>/
   colmap/{database.db, sparse/0/*.bin, images/, validation_report.json, trajectory.png}
   normalized/transform.json
   splits/{train,val,test}.txt  split_cameras.png
-  trainings/<train_run_id>/{checkpoints/, metrics.jsonl, tb/, renders/, eval.json, report/}
+  trainings/<train_run_id>/{checkpoints/, metrics.jsonl, tb/, renders/, figures/, videos/, metrics/, eval.json, report/}
+  trainings/latest -> <train_run_id>          # pointer to the most recent training
   exports/<train_run_id>/{point_cloud.ply, cameras.json, normalize_transform.json, COORDINATES.md}
 ```
 `dataset_id = slug(object_name)_<8-char signature of video sizes/names>`.
+
+**Run identity / monitoring.** Each training gets a descriptive, timestamped
+`train_run_id`, e.g. `gsplat_glomap_30k_20260716-153045`
+(`<backend>_<mapper>_<iters>k_<timestamp>`), generated once and **baked into the
+frozen `config_resolved.yaml`** — so it is stable across stages and processes yet
+unique per experiment (no overwrites). `trainings/latest` points at the newest.
+Pin a name with `--train-run-id` (sweeps) or `train.train_run_id`. Cross-run
+comparison lives in `experiments/registry.csv` (timestamp, dataset, backend,
+mapper, registration ratio, #gaussians, PSNR/SSIM/LPIPS, VRAM, git, config path).
+When a training's inputs change (e.g. a new SfM model), a `.train_fingerprint`
+next to the checkpoints triggers a fresh train instead of resuming stale poses.
 
 ## Fingerprints & downstream invalidation
 Each stage's fingerprint = `sha256(canonical(params) + input-artifact checksums)`.
