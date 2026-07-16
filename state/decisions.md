@@ -43,3 +43,27 @@ debugging.
 ## Multi-GPU: parallel experiments, not distributed single-run
 Object-scale scenes train on one GPU; sweeps fan out via Slurm job arrays sharing
 one COLMAP build.
+
+## Two trainer bugs that caused blurry reconstructions (fixed)
+Early full-scale runs produced soft/foggy renders (test PSNR ~14, LPIPS ~0.82)
+even though the pipeline ran end-to-end. Root causes, both in the gsplat trainer:
+1. **scene_scale from points.max()** — COLMAP outlier points inflated it ~10x
+   (5-7 vs a true camera radius ~0.5). That scaled the means LR ~10x too high
+   (positions jitter -> blur) AND inflated gsplat's grow_scale3d normalization so
+   Gaussians were clone-only, never split (never shrink -> blur + runaway growth,
+   PSNR fell as count grew). Fix: `ColmapDataset.scene_extent()` now uses the max
+   **camera-center** distance * 1.1 (the 3DGS spatial_lr_scale convention).
+2. **Missing position-LR decay** — added the standard ExponentialLR ~100x decay on
+   the means LR so centers settle to sharp detail.
+After both fixes, the single-orbit Pavillon reconstruction reaches test **PSNR
+23.9 / SSIM 0.82 / LPIPS 0.245** with sharp renders (verified on the qualitative
+figure). Diagnosed *using* the reporting subsystem's qualitative/stats figures.
+
+## Data characterization + SOTA next steps (Pavillon carved panel)
+The capture is a single-side, near-planar, low-overlap close-up of a bas-relief
+carved wooden panel (ceiling stood vertical). Vanilla 3DGS now works (~24 PSNR
+in-cone) but is fundamentally limited by the narrow cone / sparse overlap.
+Adapted techniques to consider (framework has backend/SfM extension points):
+robust SfM for low overlap (GLOMAP, MASt3R/DUSt3R/VGGT); surface-first
+reconstruction for the relief (2DGS, SuGaR -> textured mesh); sparse-view
+depth/normal priors (DepthAnything-v2/Marigold; FSGS/SparseGS/DNGaussian).
