@@ -24,18 +24,20 @@ def _even(img: np.ndarray) -> np.ndarray:
     return np.ascontiguousarray(img[: h - (h % 2), : w - (w % 2)])
 
 
-def orbit_video(renderer, out: Path, *, n_frames: int = 120, elevation_deg: float = 20.0,
-                radius_scale: float = 1.2, fps: int = 30, width: int = 960,
-                height: int = 540) -> Path | None:
-    """Render a closed orbit around the scene from a trained checkpoint."""
+def orbit_video(renderer, out: Path, *, n_frames: int = 120, elevation_deg: float = 12.0,
+                arc_deg: float = 80.0, fps: int = 30, width: int = 960,
+                height: int = 540, framing_margin: float = 1.2) -> Path | None:
+    """Render a FRONT-FACING ARC that frames the whole object (pulled back to fit
+    it in view). A full 360 is avoided because single-side captures never saw the
+    back; the arc sweeps across the captured front to reveal relief via parallax."""
     from . import cameras as cam_mod
 
-    center, up, radius, K = cam_mod.scene_frame_from_dataset(renderer.dataset)
-    # scale intrinsics from a source view to the requested render size
     src = renderer.dataset.samples[0]
-    K = cam_mod.resize_intrinsics(K, (src.width, src.height), (width, height))
-    path = cam_mod.orbit_path(center, up, radius, K, width, height, n_frames=n_frames,
-                              elevation_deg=elevation_deg, radius_scale=radius_scale)
+    K = cam_mod.resize_intrinsics(src.K, (src.width, src.height), (width, height))
+    obj = cam_mod.object_frame_from_dataset(renderer.dataset, K, width, height,
+                                            margin=framing_margin)
+    path = cam_mod.front_arc_path(obj, K, width, height, n_frames=n_frames,
+                                  arc_deg=arc_deg, elevation_deg=elevation_deg)
     w = _writer(out, fps)
     try:
         for c in path:
@@ -43,6 +45,42 @@ def orbit_video(renderer, out: Path, *, n_frames: int = 120, elevation_deg: floa
     finally:
         w.close()
     return out
+
+
+def overview_progression_video(renderer, out: Path, *, fps: int = 4,
+                               width: int = 960, height: int = 540,
+                               framing_margin: float = 1.2, hold: int = 6) -> Path | None:
+    """Training-progression from an OVERVIEW camera that frames the whole object:
+    render each saved checkpoint from the same pulled-back pose. Each checkpoint
+    is held for `hold` frames so the short sequence is watchable."""
+    from . import cameras as cam_mod
+
+    ckpts = renderer.checkpoints()
+    if len(ckpts) < 2:
+        return None
+    src = renderer.dataset.samples[0]
+    K = cam_mod.resize_intrinsics(src.K, (src.width, src.height), (width, height))
+    obj = cam_mod.object_frame_from_dataset(renderer.dataset, K, width, height,
+                                            margin=framing_margin)
+    cam = cam_mod.overview_camera(obj, K, width, height)
+    import re
+    w = _writer(out, fps)
+    try:
+        for ck in ckpts:
+            renderer.load(ck)
+            frame = _even(renderer.render(cam))
+            m = re.search(r"ckpt_(\d+)", ck.name)
+            label = f"iter {int(m.group(1))}" if m else ck.name
+            for _ in range(max(1, hold)):
+                w.append_data(_annotate_np(frame, label))
+    finally:
+        w.close()
+    renderer.load(renderer.checkpoints()[-1])   # restore final for any later use
+    return out
+
+
+def _annotate_np(img: np.ndarray, text: str) -> np.ndarray:
+    return _even(_annotate(img, text))
 
 
 def progression_video(training_dir: Path, out: Path, *, fps: int = 10) -> Path | None:

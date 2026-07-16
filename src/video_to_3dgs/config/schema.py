@@ -209,12 +209,15 @@ class ReportCfg(_Base):
     videos: list[Literal["orbit", "progression"]] = Field(
         default_factory=lambda: ["orbit", "progression"])
     orbit_frames: int = 120
-    orbit_elevation_deg: float = 20.0
-    orbit_radius_scale: float = 1.2
+    orbit_elevation_deg: float = 12.0
+    orbit_arc_deg: float = 80.0          # front-facing sweep (not full 360 for single-side)
+    orbit_radius_scale: float = 1.2      # (legacy; framing_margin now controls distance)
+    framing_margin: float = 1.25         # pull-back so the whole object fits in view
     orbit_width: int = 960
     orbit_height: int = 540
     video_fps: int = 30
-    progression_fps: int = 10
+    progression_fps: int = 4             # overview progression is a few checkpoints
+    progression_hold: int = 6            # frames to hold each checkpoint
 
 
 # --------------------------------------------------------------------------- #

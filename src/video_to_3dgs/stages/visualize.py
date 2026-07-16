@@ -90,13 +90,23 @@ class VisualizeStage(Stage):
                         continue
                     out = videos.orbit_video(
                         renderer, vdir / "orbit.mp4", n_frames=cfg.orbit_frames,
-                        elevation_deg=cfg.orbit_elevation_deg,
-                        radius_scale=cfg.orbit_radius_scale, fps=cfg.video_fps,
-                        width=cfg.orbit_width, height=cfg.orbit_height)
+                        elevation_deg=cfg.orbit_elevation_deg, arc_deg=cfg.orbit_arc_deg,
+                        fps=cfg.video_fps, width=cfg.orbit_width, height=cfg.orbit_height,
+                        framing_margin=cfg.framing_margin)
                 elif name == "progression":
-                    out = videos.progression_video(
-                        layout.training_dir(tr), vdir / "training_progression.mp4",
-                        fps=cfg.progression_fps)
+                    # overview progression frames the whole object (pulled back);
+                    # falls back to the val-render close-up progression if no GPU.
+                    renderer = renderer or self._renderer(ctx, tr)
+                    if renderer is not None:
+                        out = videos.overview_progression_video(
+                            renderer, vdir / "training_progression.mp4",
+                            fps=cfg.progression_fps, width=cfg.orbit_width,
+                            height=cfg.orbit_height, framing_margin=cfg.framing_margin,
+                            hold=cfg.progression_hold)
+                    else:
+                        out = videos.progression_video(
+                            layout.training_dir(tr), vdir / "training_progression.mp4",
+                            fps=cfg.progression_fps)
                 else:
                     continue
                 if out:

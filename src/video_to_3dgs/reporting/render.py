@@ -30,12 +30,31 @@ class CheckpointRenderer:
         if ckpt is None:
             raise FileNotFoundError(f"no valid checkpoint under {layout.checkpoints_dir(train_run_id)}")
         self.checkpoint = ckpt
+        self._layout = layout
+        self._train_run_id = train_run_id
+        self._load_checkpoint = load_checkpoint
         ds = ColmapDataset(layout, "train", downscale=1)
         self.params, _ = create_splats(ds.points, ds.point_colors, sh_degree, device)
         load_checkpoint(ckpt, self.params, {})
         self.dataset = ds
         self.near = near
         self.far = far
+
+    def load(self, checkpoint) -> None:
+        """Reload Gaussian params from a specific checkpoint (for progression)."""
+        self._load_checkpoint(checkpoint, self.params, {})
+        self.checkpoint = checkpoint
+
+    def checkpoints(self) -> list:
+        """All saved checkpoints for this run, ordered by iteration."""
+        import re
+        d = self._layout.checkpoints_dir(self._train_run_id)
+        out = []
+        for p in d.iterdir():
+            m = re.search(r"ckpt_(\d+)\.pt$", p.name)
+            if m:
+                out.append((int(m.group(1)), p))
+        return [p for _, p in sorted(out)]
 
     def render(self, cam) -> np.ndarray:
         """Render a PathCamera -> HxWx3 uint8 RGB image."""
