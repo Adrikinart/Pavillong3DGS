@@ -50,9 +50,15 @@ class TrainStage(Stage):
         ckdir = ctx.layout.checkpoints_dir(tr)
         fp_file = ckdir / ".train_fingerprint"
         cur_fp = self.fingerprint(ctx)
-        if ckdir.exists() and fp_file.exists() and fp_file.read_text().strip() != cur_fp:
-            ctx.logger.warning("train inputs changed since last run -> clearing stale "
-                               "checkpoints for fresh training")
+        has_ckpts = ckdir.exists() and any(ckdir.glob("ckpt_*.pt"))
+        # Resume ONLY when the checkpoints provably belong to this exact config+data
+        # (fingerprint file present and matching). Missing file (legacy checkpoints)
+        # or a mismatch => unknown/stale provenance => clear and train fresh, so we
+        # never resume poses from a different reconstruction.
+        fp_ok = fp_file.exists() and fp_file.read_text().strip() == cur_fp
+        if has_ckpts and not fp_ok:
+            ctx.logger.warning("existing checkpoints are stale/unverified (fingerprint "
+                               "missing or changed) -> clearing for fresh training")
             shutil.rmtree(ctx.layout.training_dir(tr), ignore_errors=True)
         ckdir.mkdir(parents=True, exist_ok=True)
         fp_file.write_text(cur_fp)
