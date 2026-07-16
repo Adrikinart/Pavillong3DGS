@@ -128,7 +128,9 @@ class GsplatBackend(TrainingBackend):
 
         metrics = MetricsLogger(layout.metrics_jsonl(tr_id), layout.tensorboard_dir(tr_id),
                                 enable_tb=ctx.config.monitoring.tensorboard)
-        health = HealthMonitor(gaussian_cap=dcfg.cap_max,
+        # Soft cap is enforced by freezing densification (below); the health check
+        # is only a genuine-runaway safety net (e.g. NaN-driven), well above the cap.
+        health = HealthMonitor(gaussian_cap=int(dcfg.cap_max * 2.5),
                                no_improve_patience=cfg.early_stop_patience)
         preempt = PreemptionHandler()
         preempt.install()
@@ -146,6 +148,7 @@ class GsplatBackend(TrainingBackend):
         t0 = time.time()
         status = "COMPLETED"
         best_val = {"psnr": None}
+        cap_frozen = False
 
         for step in range(start_step, max_iters):
             if cursor >= len(order):
@@ -172,8 +175,15 @@ class GsplatBackend(TrainingBackend):
             for opt in optimizers.values():
                 opt.step()
                 opt.zero_grad(set_to_none=True)
-            strategy.step_post_backward(params, optimizers, strategy_state, step, info,
-                                        packed=False)
+            # Densify/prune — but FREEZE growth once the cap is reached instead of
+            # crashing. gsplat's DefaultStrategy has no built-in cap, so gate it here.
+            if params["means"].shape[0] < dcfg.cap_max:
+                strategy.step_post_backward(params, optimizers, strategy_state, step, info,
+                                            packed=False)
+            elif not cap_frozen:
+                log.warning("gaussian cap %d reached at step %d; freezing densification "
+                            "and continuing to optimize", dcfg.cap_max, step)
+                cap_frozen = True
 
             n_gauss = params["means"].shape[0]
             if step % 50 == 0:
