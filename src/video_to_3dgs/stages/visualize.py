@@ -147,12 +147,15 @@ class VisualizeStage(Stage):
                 return None
             from ..reporting.render import CheckpointRenderer
             near = 0.01
+            crop = None
             if ctx.layout.normalize_transform.exists():
                 import json
-                near = max(1e-3, float(json.loads(ctx.layout.normalize_transform.read_text())
-                                       .get("near", 0.01)) * 0.5)
+                d = json.loads(ctx.layout.normalize_transform.read_text())
+                near = max(1e-3, float(d.get("near", 0.01)) * 0.5)
+                if ctx.config.report.crop_to_object:
+                    crop = d.get("crop_box_normalized")
             return CheckpointRenderer(ctx.layout, tr, ctx.config.train.sh_degree,
-                                      device="cuda", near=near)
+                                      device="cuda", near=near, crop_box=crop)
         except Exception as e:  # noqa: BLE001
             ctx.logger.warning("could not build renderer for orbit: %s", e)
             return None

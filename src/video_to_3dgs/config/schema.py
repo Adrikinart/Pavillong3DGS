@@ -218,6 +218,7 @@ class ReportCfg(_Base):
     video_fps: int = 30
     progression_fps: int = 4             # overview progression is a few checkpoints
     progression_hold: int = 6            # frames to hold each checkpoint
+    crop_to_object: bool = True          # render only Gaussians in the object box (kill floaters)
 
 
 # --------------------------------------------------------------------------- #
