@@ -241,10 +241,10 @@ class Gsplat2DGSBackend(TrainingBackend):
             vm = torch.from_numpy(s.viewmat.astype(np.float32)).to(device)
             K = torch.from_numpy(s.K.astype(np.float32)).to(device)
             with torch.no_grad():
-                out = self._rasterize(gsplat, params, vm, K, s.width, s.height,
+                ras = self._rasterize(gsplat, params, vm, K, s.width, s.height,
                                       ctx.train_cfg.sh_degree, near, 1e10)
-            rgb = out[0][0, ..., :3].clamp(0, 1).cpu().numpy()
-            depth = out[0][0, ..., 3].cpu().numpy()
+            rgb = ras[0][0, ..., :3].clamp(0, 1).cpu().numpy()
+            depth = ras[0][0, ..., 3].cpu().numpy()
             color_im = o3d.geometry.Image((rgb * 255).astype(np.uint8))
             depth_im = o3d.geometry.Image(depth.astype(np.float32))
             rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(

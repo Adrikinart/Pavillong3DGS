@@ -59,9 +59,12 @@ train:
     cap_max: 1500000
   backend_opts:
     normal_lambda: 0.05          # normal-consistency (surface alignment)
-    dist_lambda: 100.0           # depth-distortion (concentrate on surface)
+    # gsplat's distortion is L1 (larger scale than the 2DGS paper's L2); 100 here
+    # over-regularized this single-side low-overlap capture (PSNR stuck ~13). Use a
+    # light weight and start with the normals so early training is ~pure photometric.
+    dist_lambda: 1.0
     normal_start_iter: 7000
-    dist_start_iter: 3000
+    dist_start_iter: 7000
 
 report:
   enabled: true
