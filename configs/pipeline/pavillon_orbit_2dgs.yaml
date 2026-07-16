@@ -53,10 +53,10 @@ train:
     start_iteration: 500
     stop_iteration: 15000
     interval: 100
-    grad_threshold: 0.0003
+    grad_threshold: 0.0002        # gsplat default; densify enough for surface detail
     opacity_reset_interval: 3000
     prune_opacity: 0.05          # 2DGS prunes more aggressively
-    cap_max: 1000000
+    cap_max: 1500000
   backend_opts:
     normal_lambda: 0.05          # normal-consistency (surface alignment)
     dist_lambda: 100.0           # depth-distortion (concentrate on surface)

@@ -139,14 +139,18 @@ class Gsplat2DGSBackend(TrainingBackend):
             render = colors[0, ..., :3]
             loss, l1, ssim_val = photometric_loss(render, gt, mask_t, cfg.l1_lambda,
                                                   cfg.ssim_lambda)
-            # normal consistency (align splats to surface) + depth distortion
+            # 2DGS regularizers. Supervise normals ONLY where the surface is
+            # rendered (weight by alpha) — otherwise background pixels inject noise
+            # and hurt the reconstruction.
             reg = {}
             if step >= dist_start:
                 dist_loss = distort.mean()
                 loss = loss + w_dist * dist_loss
                 reg["dist"] = float(dist_loss.detach())
             if step >= normal_start:
-                normal_loss = (1.0 - (normals * surf_normals).sum(dim=-1)).mean()
+                a = alphas[0].detach()                                   # (H,W,1)
+                cos = (normals[0] * surf_normals[0]).sum(dim=-1, keepdim=True)  # (H,W,1)
+                normal_loss = (a * (1.0 - cos)).mean()
                 loss = loss + w_normal * normal_loss
                 reg["normal"] = float(normal_loss.detach())
             health.check_loss(float(loss.detach()), step)
