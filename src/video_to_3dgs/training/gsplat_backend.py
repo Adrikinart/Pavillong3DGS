@@ -142,6 +142,13 @@ class GsplatBackend(TrainingBackend):
             return r[0]
 
         max_iters = cfg.max_iterations
+        # Standard 3DGS position-LR decay: without it the Gaussian centers keep
+        # jittering at the full LR for the whole run and never settle to sharp
+        # detail (renders come out as blurry fog). Decay the means LR ~100x over
+        # training (gamma so lr(final) = lr(0) * 0.01). Resume-safe via last_epoch.
+        means_sched = torch.optim.lr_scheduler.ExponentialLR(
+            optimizers["means"], gamma=0.01 ** (1.0 / max(max_iters, 1)),
+            last_epoch=start_step - 1)
         order = np.arange(len(train_ds))
         np.random.shuffle(order)
         cursor = 0
@@ -175,6 +182,7 @@ class GsplatBackend(TrainingBackend):
             for opt in optimizers.values():
                 opt.step()
                 opt.zero_grad(set_to_none=True)
+            means_sched.step()   # decay position LR so Gaussians settle (sharpness)
             # Densify/prune — but FREEZE growth once the cap is reached instead of
             # crashing. gsplat's DefaultStrategy has no built-in cap, so gate it here.
             if params["means"].shape[0] < dcfg.cap_max:
