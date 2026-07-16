@@ -19,7 +19,7 @@ mkdir -p experiments/slurm_logs
 
 CONFIG="${1:-${V2GS_CONFIG:-configs/pipeline/scene_pavillon.yaml}}"
 ENV_PREFIX="${V2GS_ENV_PREFIX:-/home/$USER/envs/v2gs}"
-source "$(dirname "$0")/../_activate_env.sh"
+source scripts/_activate_env.sh
 
 echo "[preprocess.sbatch] host=$(hostname) job=$SLURM_JOB_ID config=$CONFIG"
 srun "$ENV_PREFIX/bin/python" -m video_to_3dgs.cli run-all --config "$CONFIG" \

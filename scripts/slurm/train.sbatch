@@ -23,7 +23,7 @@ ENV_PREFIX="${V2GS_ENV_PREFIX:-/home/$USER/envs/v2gs}"
 
 # Prepare env (PATH + CUDA_HOME/CPATH so gsplat's CUDA ext can JIT-build, plus
 # node-local TORCH_EXTENSIONS_DIR/scratch). Single source: scripts/_activate_env.sh
-source "$(dirname "$0")/../_activate_env.sh"
+source scripts/_activate_env.sh
 export PIP_CACHE_DIR="/var/tmp/$USER/pip_cache"; mkdir -p "$PIP_CACHE_DIR"
 echo "[train.sbatch] host=$(hostname) job=$SLURM_JOB_ID config=$CONFIG env=$ENV_PREFIX"
 nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv,noheader || true
