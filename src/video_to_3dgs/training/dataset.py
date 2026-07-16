@@ -18,6 +18,13 @@ import numpy as np
 from .. import colmap_io
 
 
+def _center_from_viewmat(viewmat: "np.ndarray") -> "np.ndarray":
+    """Camera center in world coords from a world->camera matrix."""
+    R = viewmat[:3, :3]
+    t = viewmat[:3, 3]
+    return -R.T @ t
+
+
 @dataclass
 class CameraSample:
     name: str
@@ -113,9 +120,18 @@ class ColmapDataset:
         return len(self.samples)
 
     def scene_extent(self) -> float:
-        if len(self.points):
-            c = self.points.mean(axis=0)
-            return float(np.linalg.norm(self.points - c, axis=1).max())
+        """Scene radius from CAMERA positions (3DGS `spatial_lr_scale` convention).
+
+        Must NOT use points.max(): COLMAP leaves far outlier points that inflate it
+        ~10x, which then (a) scales the means LR ~10x too high (positions jitter ->
+        blurry renders) and (b) makes gsplat's grow_scale3d treat every Gaussian as
+        'small' -> clone-only, never split -> Gaussians never shrink. Camera extent
+        is robust and is what the densification threshold is calibrated against.
+        """
+        centers = np.array([_center_from_viewmat(s.viewmat) for s in self.samples])
+        if len(centers):
+            c = centers.mean(axis=0)
+            return float(np.linalg.norm(centers - c, axis=1).max()) * 1.1
         return 1.0
 
     def load_image(self, idx: int):
