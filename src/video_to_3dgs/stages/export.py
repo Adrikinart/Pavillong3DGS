@@ -43,15 +43,28 @@ class ExportStage(Stage):
         produced: list[str] = []
         fmts = ctx.config.export.formats
 
+        backend = get_backend(ctx.config.train.backend)
+        # 2DGS renders depth on GPU for the mesh; splat .ply export is CPU-only.
+        mesh_device = "cuda" if ctx.config.train.backend == "2dgs" else "cpu"
+        tctx = TrainContext(layout=ctx.layout, config=ctx.config,
+                            train_cfg=ctx.config.train, train_run_id=tr,
+                            device=mesh_device, logger=ctx.logger)
+
         if "ply" in fmts:
-            backend = get_backend(ctx.config.train.backend)
-            tctx = TrainContext(layout=ctx.layout, config=ctx.config,
-                                train_cfg=ctx.config.train, train_run_id=tr,
-                                device="cpu", logger=ctx.logger)
             ply = out / "point_cloud.ply"
             backend.export_ply(tctx, ckpt, ply)
             produced.append("point_cloud.ply")
             ctx.logger.info("exported %s (%.1f MB)", ply.name, ply.stat().st_size / 1e6)
+
+        # surface mesh for geometry backends (2DGS TSDF fusion)
+        if hasattr(backend, "export_mesh"):
+            try:
+                mesh = backend.export_mesh(tctx, ckpt, out / "mesh.ply")
+                if mesh is not None:
+                    produced.append("mesh.ply")
+                    ctx.logger.info("exported surface mesh -> %s", mesh)
+            except Exception as e:  # noqa: BLE001
+                ctx.logger.warning("mesh export failed: %s", e)
 
         if "transforms" in fmts and ctx.layout.normalize_transform.exists():
             shutil.copy2(ctx.layout.normalize_transform, out / "normalize_transform.json")

@@ -155,7 +155,7 @@ class DensifyCfg(_Base):
 
 
 class TrainCfg(_Base):
-    backend: Literal["gsplat", "splatfacto", "orig_3dgs"] = "gsplat"
+    backend: Literal["gsplat", "2dgs", "splatfacto", "orig_3dgs"] = "gsplat"
     train_run_id: Optional[str] = None  # auto if None
     seed: int = 42
     max_iterations: int = 30000

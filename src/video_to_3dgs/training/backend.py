@@ -74,6 +74,11 @@ def _register_builtins() -> None:
         return GsplatBackend()
     register("gsplat", _gsplat)
 
+    def _gsplat_2dgs() -> TrainingBackend:
+        from .gsplat_2dgs_backend import Gsplat2DGSBackend
+        return Gsplat2DGSBackend()
+    register("2dgs", _gsplat_2dgs)
+
     def _splatfacto() -> TrainingBackend:
         from .adapters.nerfstudio_splatfacto import SplatfactoBackend
         return SplatfactoBackend()

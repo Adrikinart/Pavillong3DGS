@@ -1,0 +1,72 @@
+# Surface-first reconstruction of the carved panel with 2D Gaussian Splatting.
+# 2DGS disks hug the surface -> better geometry/normals + a clean TSDF mesh of the
+# relief (the object you care about). Uses GLOMAP for robust low-overlap SfM.
+object_name: pavillon_orbit_2dgs
+capture_mode: orbit
+profile:
+  name: rtxpro
+  nodelist: GPURACK5
+videos:
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/Pavillon/IMG_9647.MOV
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 2.0
+  max_frames: 260
+  min_frames: 60
+  resize_long_edge: 1600
+
+filter_frames:
+  enabled: true
+  blur_var_min: 50.0
+
+generate_masks:
+  enabled: false
+
+run_colmap:
+  matcher: exhaustive
+  mapper_backend: glomap
+  camera_model: OPENCV
+  single_camera: true
+
+validate_colmap:
+  minimum_registration_ratio: 0.60
+  hard_fail: false
+
+normalize_scene:
+  method: points
+
+split_dataset:
+  strategy: pose_aware
+
+train:
+  backend: 2dgs
+  max_iterations: 30000
+  sh_degree: 3
+  use_masks: false
+  antialiasing: true
+  checkpoint_interval: 5000
+  validation_interval: 1000
+  val_render_count: 4
+  densification:
+    strategy: default
+    start_iteration: 500
+    stop_iteration: 15000
+    interval: 100
+    grad_threshold: 0.0003
+    opacity_reset_interval: 3000
+    prune_opacity: 0.05          # 2DGS prunes more aggressively
+    cap_max: 1000000
+  backend_opts:
+    normal_lambda: 0.05          # normal-consistency (surface alignment)
+    dist_lambda: 100.0           # depth-distortion (concentrate on surface)
+    normal_start_iter: 7000
+    dist_start_iter: 3000
+
+report:
+  enabled: true
+  figures: [training_curves, qualitative, gaussian_stats, per_view, gaussian_centers]
+  videos: [orbit, progression]
+  orbit_frames: 150
+  orbit_arc_deg: 80.0
+  video_fps: 30
