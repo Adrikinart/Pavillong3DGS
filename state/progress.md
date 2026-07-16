@@ -1,48 +1,53 @@
 # Progress
 
-Last updated: 2026-07-15.
+Last updated: 2026-07-16.
+
+## Status: end-to-end pipeline WORKING on Blackwell (smoke passes)
+
+The full pipeline has run green on GPURACK5 (RTX PRO 6000, sm_120):
+COLMAP → validate → normalize → pose-aware split → gsplat train → evaluate →
+export → report, with checkpoint/resume verified.
 
 ## Completed
-- [x] Repository + cluster audit (see docs/cluster_environment.md).
-- [x] Architecture + plan (docs/, this repo).
-- [x] Core framework: paths/RunLayout, atomicio, status, Stage ABC, StageRunner
+- [x] Repo + cluster audit (docs/cluster_environment.md).
+- [x] Core framework: RunLayout, atomic IO, status invariants, StageRunner
       (skip/force/resume, stale-RUNNING recovery, fingerprints), manifest,
-      provenance, structured logging, ScratchContext.
-- [x] Config system: pydantic v2 frozen schema, layered YAML loader, cluster
-      profiles (rtx30/40/50/rtxpro/login-cpu), 5 pipeline configs.
-- [x] Environment inspection (`inspect-env`) with CUDA fwd/bwd + gsplat smoke
-      tests and sm_120 wheel-compatibility check.
-- [x] Stages: inspect_video, extract_frames (rotation-aware, multi-video),
-      filter_frames (blur/exposure/duplicate + coverage safeguard + contact
-      sheets), generate_masks (rembg/imported), run_colmap (scratch + fallbacks),
-      validate_colmap (gates + trajectory viz), normalize_scene (similarity
-      transform + inverse), split_dataset (pose-aware + viz).
-- [x] Training: TrainingBackend ABC + registry, self-contained gsplat trainer
-      (masked L1+SSIM, DefaultStrategy densify/prune, atomic checkpoints +
-      integrity + resume, JSONL+TB metrics, health hard-fails, SIGTERM→requeue),
-      dataset loader, gaussian init, validation/eval.
-- [x] evaluate (held-out only, PSNR/SSIM/LPIPS + masked, FPS/VRAM, registry.csv),
-      export (.ply + cameras + transforms + COORDINATES.md), monitoring
-      (gpu_monitor, HTML/MD report).
-- [x] Unified CLI (all stages + run-all/status/report).
-- [x] Slurm sbatch (preprocess/train/evaluate/sweep) + shell scripts
-      (bootstrap/inspect_cluster/run_smoke_test/run_pipeline/sync_scratch).
-- [x] Tests: 35 unit + integration tests PASS in a CPU env (config, core, runner
-      invariants, geometry, checkpoint, ffmpeg CPU pipeline).
-- [x] CPU stages validated end-to-end on a real clip (inspect→extract→filter,
-      idempotent SKIP verified).
-- [x] Docs (README + 6 docs) + state files.
+      provenance, node-local ScratchContext.
+- [x] Config: pydantic v2 frozen schema, layered YAML, cluster profiles, 5 configs.
+      `--force` re-freezes config so edits apply.
+- [x] `inspect-env` with CUDA fwd/bwd + gsplat rasterize + sm_120 wheel check.
+- [x] Stages: inspect_video, extract_frames (rotation-aware), filter_frames
+      (scores + coverage safeguard + contact sheets under _diagnostics/),
+      generate_masks (rembg), run_colmap (scratch + fallbacks + best-attempt
+      selection + COLMAP 3.13 option auto-detect), validate_colmap (gates + viz),
+      normalize_scene (similarity transform + inverse), split_dataset (pose-aware).
+- [x] Training: gsplat backend (masked L1+SSIM, DefaultStrategy densify/prune,
+      atomic checkpoints + integrity + resume, JSONL+TB metrics, health hard-fails,
+      SIGTERM->requeue), deterministic train_run_id.
+- [x] evaluate (held-out PSNR/SSIM/LPIPS + masked, FPS/VRAM, registry.csv),
+      export (.ply + cameras + transform + COORDINATES.md), monitoring, HTML/MD report.
+- [x] CLI, Slurm sbatch (preprocess/train/evaluate/sweep), shell scripts,
+      scripts/_activate_env.sh (CUDA_HOME/CPATH so gsplat JIT-builds on sm_120).
+- [x] Tests: 39 unit + integration PASS in the CPU env.
+- [x] Env `v2gs` on /home: torch 2.13.0+cu130 (sm_120), gsplat 1.5.3 built on sm_120,
+      colmap 3.13. Bootstrap installs the pip layer via srun on a GPU node.
+- [x] Blackwell validation on GPURACK5: CUDA fwd/bwd pass, gsplat rasterize pass.
+- [x] **End-to-end smoke PASSES** (configs/pipeline/smoke_test.yaml, IMG_9647):
+      COLMAP 46/126 @ 0.48px -> train (val PSNR 19.6) -> eval (test PSNR 17.73,
+      SSIM 0.61, LPIPS 0.76, 1.02 render FPS) -> ply export -> report.
+      Marker: experiments/SMOKE_TEST_OK.
+- [x] **Resume verified**: dropped the final checkpoint, re-ran train -> "resumed
+      from ckpt_0001000.pt at step 1001" -> completed.
+- [x] Docs (README + 7 docs incl. COLMAP guide), CLAUDE.md NFS notes retired
+      (fixed by 2026-07-15 reboot).
 
-## In progress / on the cluster
-- [ ] `v2gs` env build (torch cu128 + gsplat + colmap) — running via
-      bootstrap_environment.sh (large NFS install).
-- [ ] GPU validation on GPURACK5 (`inspect-env --gpu-check`) — pending env.
-- [ ] End-to-end smoke test on GPURACK5 (COLMAP→train→eval→export→report) —
-      pending env.
-- [ ] Resume verification on GPU — pending env.
-
-## Notes
-- All GPU-dependent code is import-lazy so the CPU-only login node imports the
-  package and runs preprocessing/tests without torch.
-- Anything marked "pending env" is implemented and unit-tested but not yet run on
-  a Blackwell GPU because the env build was still in progress.
+## Notes / remaining
+- The Pavillon scene reconstructs but is view-dependent-hard; IMG_9648 is a
+  weakly-connected walking clip that does NOT reconstruct (do not use it).
+- COLMAP's incremental mapper is nondeterministic; the stage keeps the best attempt.
+  For the full scene_pavillon run, exhaustive matching over all 3 clips is expected
+  to register more images than the smoke's single-clip sequential pass.
+- Full-quality runs (object_default/high_quality, scene_pavillon) are configured
+  and ready to submit via scripts/slurm/*.sbatch; not yet run at full scale.
+- Optional backends (nerfstudio splatfacto, orig-3dgs, 2DGS/SuGaR geometry) are
+  stubbed behind the TrainingBackend ABC, not implemented.
