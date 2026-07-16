@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from ..core.atomicio import atomic_write_json
@@ -10,11 +9,15 @@ from ..core.stage import Artifact, Stage, StageContext
 
 
 def resolve_train_run_id(ctx: StageContext) -> str:
+    """Deterministic training-run id, STABLE across calls and processes.
+
+    Must not depend on wall-clock time: the runner calls declared_outputs() both
+    before and after run(), and evaluate/export run in separate processes — a
+    timestamped id would point them at different directories. Default to one run
+    per backend; pass --train-run-id (or train.train_run_id) for named/parallel
+    trainings (e.g. sweeps)."""
     tr = ctx.params.get("train_run_id") or ctx.config.train.train_run_id
-    if tr:
-        return tr
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    return f"{ctx.config.train.backend}_{stamp}"
+    return tr or f"{ctx.config.train.backend}_run"
 
 
 class TrainStage(Stage):

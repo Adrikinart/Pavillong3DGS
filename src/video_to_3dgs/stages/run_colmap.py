@@ -151,9 +151,15 @@ class RunColmapStage(Stage):
                     log.info("attempt %d (%s): registered %d/%d, reproj=%.3f",
                              i, att["matcher"], stats["n_registered_images"], n_input,
                              stats["mean_reprojection_error"] or -1)
-                    chosen = {"attempt": i, "matcher": att["matcher"], "stats": stats,
-                              "db": db, "sparse0": model0}
-                    # good enough? accept first attempt reaching the ratio gate
+                    cand = {"attempt": i, "matcher": att["matcher"], "stats": stats,
+                            "db": db, "sparse0": model0}
+                    # keep the BEST attempt (most registered images) — COLMAP's
+                    # incremental mapper is nondeterministic, so a later attempt can
+                    # be worse; never let it overwrite a better earlier result.
+                    if chosen is None or (stats["n_registered_images"]
+                                          > chosen["stats"]["n_registered_images"]):
+                        chosen = cand
+                    # good enough? stop once an attempt clears the acceptance gate
                     if stats.get("registration_ratio", 0) >= \
                             ctx.config.validate_colmap.minimum_registration_ratio:
                         break
@@ -235,6 +241,10 @@ class RunColmapStage(Stage):
         if match_gpu:
             m += [f"--{match_gpu}", gpu]
         _run_colmap(m, log, cb)
+
+        # incremental mapping -> sparse/0
+        _run_colmap(["mapper", "--database_path", str(db), "--image_path", str(images),
+                     "--output_path", str(sparse)], log, cb)
 
     @staticmethod
     def _gpu_flag(colmap_bin: str, subcmd: str, new_name: str, old_name: str) -> str | None:

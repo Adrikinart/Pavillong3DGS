@@ -24,3 +24,26 @@ def test_resolve_found_on_path(monkeypatch, tmp_path):
     fake.chmod(0o755)
     monkeypatch.setenv("PATH", str(tmp_path))
     assert resolve_colmap_bin("colmap") == str(fake)
+
+
+def test_reconstruct_issues_feature_match_and_mapper(monkeypatch, tmp_path):
+    """Regression: _reconstruct must run feature_extractor -> matcher -> MAPPER.
+    (A dropped mapper call once produced valid matches but empty sparse/ silently.)"""
+    import logging
+
+    from video_to_3dgs.stages import run_colmap as rc
+
+    calls: list[str] = []
+    monkeypatch.setattr(rc, "_run_colmap", lambda args, log, cb="colmap": calls.append(args[0]))
+    monkeypatch.setattr(rc.RunColmapStage, "_gpu_flag",
+                        lambda self, *a, **k: "FeatureExtraction.use_gpu")
+
+    class _C:
+        colmap_bin = "colmap"; use_gpu = False; camera_model = "OPENCV"
+        single_camera = True; sift_max_features = 8192; sequential_overlap = 10
+        loop_detection = False; vocab_tree_path = None
+
+    rc.RunColmapStage()._reconstruct(
+        None, tmp_path / "db.db", tmp_path / "img", tmp_path / "sparse", None,
+        _C(), "sequential", logging.getLogger("t"), "colmap")
+    assert calls == ["feature_extractor", "sequential_matcher", "mapper"], calls
