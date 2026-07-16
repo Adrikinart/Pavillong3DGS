@@ -34,13 +34,14 @@ from .stages.split_dataset import SplitDatasetStage
 from .stages.train import TrainStage
 from .stages.evaluate import EvaluateStage
 from .stages.export import ExportStage
+from .stages.visualize import VisualizeStage
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 STAGE_CLASSES = [
     InspectVideoStage, ExtractFramesStage, FilterFramesStage, GenerateMasksStage,
     RunColmapStage, ValidateColmapStage, NormalizeSceneStage, SplitDatasetStage,
-    TrainStage, EvaluateStage, ExportStage,
+    TrainStage, EvaluateStage, ExportStage, VisualizeStage,
 ]
 STAGE_BY_NAME = {c.name: c for c in STAGE_CLASSES}
 
@@ -57,6 +58,7 @@ COMMAND_TO_STAGE = {
     "train": "train",
     "evaluate": "evaluate",
     "export": "export",
+    "visualize": "visualize",
 }
 
 

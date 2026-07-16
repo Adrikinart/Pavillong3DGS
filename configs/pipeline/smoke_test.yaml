@@ -67,5 +67,14 @@ evaluate:
   compute_lpips: true
   make_orbit_video: false
 
+report:
+  enabled: true
+  figures: [training_curves, qualitative, gaussian_stats, per_view, gaussian_centers]
+  videos: [orbit, progression]
+  orbit_frames: 30           # small/fast for the smoke
+  orbit_width: 640
+  orbit_height: 360
+  video_fps: 20
+
 monitoring:
   gpu_sample_interval_s: 5.0

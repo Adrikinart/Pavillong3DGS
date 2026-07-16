@@ -197,6 +197,26 @@ class MonitoringCfg(_Base):
     gpu_sample_interval_s: float = 15.0
 
 
+class ReportCfg(_Base):
+    """Figures + videos generated post-training by the `visualize` stage."""
+    enabled: bool = True
+    # figures: training_curves(F1) qualitative(F2) gaussian_stats+per_view(F3) gaussian_centers(F4)
+    figures: list[Literal["training_curves", "qualitative", "gaussian_stats",
+                          "per_view", "gaussian_centers"]] = Field(
+        default_factory=lambda: ["training_curves", "qualitative", "gaussian_stats",
+                                 "per_view", "gaussian_centers"])
+    # videos: orbit(V1) progression(V3)
+    videos: list[Literal["orbit", "progression"]] = Field(
+        default_factory=lambda: ["orbit", "progression"])
+    orbit_frames: int = 120
+    orbit_elevation_deg: float = 20.0
+    orbit_radius_scale: float = 1.2
+    orbit_width: int = 960
+    orbit_height: int = 540
+    video_fps: int = 30
+    progression_fps: int = 10
+
+
 # --------------------------------------------------------------------------- #
 # Top-level
 # --------------------------------------------------------------------------- #
@@ -222,6 +242,7 @@ class PipelineConfig(_Base):
     train: TrainCfg = Field(default_factory=TrainCfg)
     evaluate: EvalCfg = Field(default_factory=EvalCfg)
     export: ExportCfg = Field(default_factory=ExportCfg)
+    report: ReportCfg = Field(default_factory=ReportCfg)
     monitoring: MonitoringCfg = Field(default_factory=MonitoringCfg)
 
     schema_version: int = 1

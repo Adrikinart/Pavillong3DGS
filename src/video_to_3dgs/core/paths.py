@@ -162,6 +162,15 @@ class RunLayout:
     def report_dir(self, train_run_id: str) -> Path:
         return self.training_dir(train_run_id) / "report"
 
+    def figures_dir(self, train_run_id: str) -> Path:
+        return self.training_dir(train_run_id) / "figures"
+
+    def videos_dir(self, train_run_id: str) -> Path:
+        return self.training_dir(train_run_id) / "videos"
+
+    def metrics_dir(self, train_run_id: str) -> Path:
+        return self.training_dir(train_run_id) / "metrics"
+
     def exports_dir(self, train_run_id: str) -> Path:
         return self.run_dir / "exports" / train_run_id
 

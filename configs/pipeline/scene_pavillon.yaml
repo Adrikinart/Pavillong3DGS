@@ -40,3 +40,14 @@ train:
   max_iterations: 30000
   use_masks: false
   antialiasing: true
+  checkpoint_interval: 5000
+  validation_interval: 1000    # ~30 val snapshots -> smooth training-progression video
+  val_render_count: 4
+
+report:
+  enabled: true
+  figures: [training_curves, qualitative, gaussian_stats, per_view, gaussian_centers]
+  videos: [orbit, progression]
+  orbit_frames: 120
+  orbit_elevation_deg: 20.0
+  video_fps: 30
