@@ -55,6 +55,22 @@ def resolve_colmap_bin(configured: str = "colmap") -> str:
         "run_colmap.colmap_bin to its absolute path.")
 
 
+def resolve_glomap_bin(configured: str = "glomap") -> str:
+    """Locate the glomap binary (PATH, the running env, or the isolated glomap env)."""
+    if os.path.sep in configured and Path(configured).exists():
+        return configured
+    found = shutil.which(configured)
+    if found:
+        return found
+    for cand in (Path(sys.prefix) / "bin" / "glomap",
+                 Path.home() / "envs" / "glomap" / "bin" / "glomap"):
+        if cand.exists():
+            return str(cand)
+    raise InputValidationError(
+        "glomap binary not found. Install it (conda-forge glomap, e.g. into "
+        "~/envs/glomap) or set run_colmap.glomap_bin, or use mapper_backend=colmap.")
+
+
 def _run_colmap(args: list[str], log, colmap_bin: str = "colmap") -> None:
     cmd = [colmap_bin] + args
     log.info("colmap %s", args[0])
@@ -242,9 +258,11 @@ class RunColmapStage(Stage):
             m += [f"--{match_gpu}", gpu]
         _run_colmap(m, log, cb)
 
-        # incremental mapping -> sparse/0
+        # mapping -> sparse/0 (COLMAP incremental, or GLOMAP global for hard sets).
+        # Both accept the same --database_path/--image_path/--output_path args.
+        mapper_bin = resolve_glomap_bin(c.glomap_bin) if c.mapper_backend == "glomap" else cb
         _run_colmap(["mapper", "--database_path", str(db), "--image_path", str(images),
-                     "--output_path", str(sparse)], log, cb)
+                     "--output_path", str(sparse)], log, mapper_bin)
 
     @staticmethod
     def _gpu_flag(colmap_bin: str, subcmd: str, new_name: str, old_name: str) -> str | None:

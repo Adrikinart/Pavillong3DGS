@@ -99,6 +99,10 @@ class MaskCfg(_Base):
 
 class ColmapCfg(_Base):
     matcher: Literal["sequential", "exhaustive", "vocab_tree"] = "sequential"
+    # mapper backend: colmap (incremental) or glomap (global; more robust on
+    # low-overlap / hard sets). glomap reuses COLMAP's features+matches.
+    mapper_backend: Literal["colmap", "glomap"] = "colmap"
+    glomap_bin: str = "glomap"
     camera_model: str = "OPENCV"
     single_camera: bool = True
     use_gpu: bool = False               # GPU SIFT on sm_120 unverified; default CPU

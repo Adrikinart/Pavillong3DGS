@@ -42,6 +42,7 @@ def test_reconstruct_issues_feature_match_and_mapper(monkeypatch, tmp_path):
         colmap_bin = "colmap"; use_gpu = False; camera_model = "OPENCV"
         single_camera = True; sift_max_features = 8192; sequential_overlap = 10
         loop_detection = False; vocab_tree_path = None
+        mapper_backend = "colmap"; glomap_bin = "glomap"
 
     rc.RunColmapStage()._reconstruct(
         None, tmp_path / "db.db", tmp_path / "img", tmp_path / "sparse", None,
