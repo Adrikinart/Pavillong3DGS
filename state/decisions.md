@@ -67,3 +67,21 @@ Adapted techniques to consider (framework has backend/SfM extension points):
 robust SfM for low overlap (GLOMAP, MASt3R/DUSt3R/VGGT); surface-first
 reconstruction for the relief (2DGS, SuGaR -> textured mesh); sparse-view
 depth/normal priors (DepthAnything-v2/Marigold; FSGS/SparseGS/DNGaussian).
+
+## SOTA A2 — 2DGS surface backend (implemented; underperforms on THIS capture)
+The `2dgs` backend (gsplat.rasterization_2dgs + normal/distortion regularizers +
+gradient_2dgs densification + Open3D TSDF mesh export) is implemented, API-validated
+on GPU, and wired into the pipeline/export. BUT on the single-side, near-planar,
+low-overlap carved-panel capture it produces flat, featureless renders (val render
+inspected directly: uniform beige blocks, no relief) at PSNR ~13. Causes: 2DGS
+needs good multi-view surface coverage this capture lacks; gradient_2dgs densifies
+far too slowly here (~0.28M vs ~1.5M for 3DGS); and it likely needs 2DGS-specific
+disk initialization (oriented normals) rather than the shared 3DGS init. Conclusion:
+for this object, vanilla 3DGS (test PSNR ~24, sharp) is the deliverable; 2DGS is
+kept as an experimental backend for better-covered captures and would need A3's
+depth/normal priors to supply the missing surface signal.
+
+## Monitoring lesson (from the user)
+Judge a run early by LOOKING at the first/last val renders (saved under
+trainings/<id>/renders/val_*/), not only the PSNR number — a glance at the image
+reveals a dead-end (flat/blurry/floaters) in seconds. Applied going forward.
