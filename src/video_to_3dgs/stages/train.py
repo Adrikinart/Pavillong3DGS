@@ -42,6 +42,21 @@ class TrainStage(Stage):
         from ..training.backend import TrainContext, get_backend
 
         tr = resolve_train_run_id(ctx)
+        # If upstream data/config changed since the last training (e.g. a different
+        # SfM model), existing checkpoints are stale -> train fresh instead of
+        # resuming poses from a different reconstruction. Detect via a fingerprint
+        # file stored next to the checkpoints.
+        import shutil
+        ckdir = ctx.layout.checkpoints_dir(tr)
+        fp_file = ckdir / ".train_fingerprint"
+        cur_fp = self.fingerprint(ctx)
+        if ckdir.exists() and fp_file.exists() and fp_file.read_text().strip() != cur_fp:
+            ctx.logger.warning("train inputs changed since last run -> clearing stale "
+                               "checkpoints for fresh training")
+            shutil.rmtree(ctx.layout.training_dir(tr), ignore_errors=True)
+        ckdir.mkdir(parents=True, exist_ok=True)
+        fp_file.write_text(cur_fp)
+
         ctx.logger.info("training backend=%s run_id=%s", ctx.config.train.backend, tr)
         backend = get_backend(ctx.config.train.backend)
         backend.validate_env()

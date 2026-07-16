@@ -156,6 +156,10 @@ class GsplatBackend(TrainingBackend):
         status = "COMPLETED"
         best_val = {"psnr": None}
         cap_frozen = False
+        step = min(start_step, max_iters) - 1   # defined even if the loop body never runs
+        if start_step >= max_iters:
+            log.info("resumed checkpoint already at step %d >= max_iters %d; skipping training",
+                     start_step, max_iters)
 
         for step in range(start_step, max_iters):
             if cursor >= len(order):
