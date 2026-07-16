@@ -51,3 +51,14 @@ export → report, with checkpoint/resume verified.
   and ready to submit via scripts/slurm/*.sbatch; not yet run at full scale.
 - Optional backends (nerfstudio splatfacto, orig-3dgs, 2DGS/SuGaR geometry) are
   stubbed behind the TrainingBackend ABC, not implemented.
+
+## SOTA A1 — GLOMAP robust SfM (done)
+Integrated `run_colmap.mapper_backend: colmap|glomap`. On the single-side
+carved-panel close-ups GLOMAP registers **181/193** images vs **82** for
+incremental COLMAP (same features/matches) — 2.2x coverage. Final orbit
+reconstruction on 145 train views: test PSNR 23.0 / SSIM 0.81 / LPIPS 0.27
+(median 23.3, best 28.0; the one weak held-out view is a hard close-up only
+GLOMAP could register). Also fixed 3 resume-safety bugs surfaced by the re-run
+(stale-checkpoint provenance, empty-loop guard). Deliverables regenerated:
+exports/gsplat_run/point_cloud.ply + framed orbit/progression videos + figures.
+Next (on hold for go-ahead): A2 2DGS/SuGaR surface mesh, A3 depth/normal priors.
