@@ -29,7 +29,8 @@ generate_masks:
   enabled: false
 
 run_colmap:
-  matcher: sequential
+  matcher: exhaustive        # low overlap -> match all pairs
+  mapper_backend: glomap     # global SfM: 181/193 registered vs 82 for incremental COLMAP
   camera_model: OPENCV
   single_camera: true        # one clip, one camera -> shared intrinsics
   sequential_overlap: 15
