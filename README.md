@@ -111,6 +111,7 @@ build. One GPU per training (object-scale); multi-GPU is for parallel experiment
 ## Further docs
 - [docs/cluster_environment.md](docs/cluster_environment.md)
 - [docs/pipeline_architecture.md](docs/pipeline_architecture.md)
+- [docs/colmap_guide.md](docs/colmap_guide.md) — how to run COLMAP (it's env-provided, not a module)
 - [docs/experiment_protocol.md](docs/experiment_protocol.md)
 - [docs/troubleshooting.md](docs/troubleshooting.md)
 - [docs/capture_guide.md](docs/capture_guide.md)

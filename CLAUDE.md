@@ -8,10 +8,13 @@ on the Slurm GPU cluster. Start at [README.md](README.md) and
 [docs/pipeline_architecture.md](docs/pipeline_architecture.md).
 
 Project-specific guidance for agents:
-- **GPU env is `v2gs`** at `/home/$USER/envs/v2gs` (torch **cu128** for Blackwell
-  sm_120, gsplat, colmap). Build/refresh with `scripts/bootstrap_environment.sh`
-  (uses the local-disk mamba solver → NFS prefix). Do not put torch/gsplat in
-  `pyproject.toml`; they are provisioned by the env only.
+- **GPU env is `v2gs`** at `/home/$USER/envs/v2gs` (torch **cu128/cu130** exposing
+  Blackwell sm_120, gsplat, colmap 3.13). Build/refresh with
+  `scripts/bootstrap_environment.sh`; it installs the heavy pip layer (torch/gsplat)
+  via `srun` on a GPU node so the gsplat CUDA extension builds where `nvcc`+GPU are.
+  Always `source scripts/_activate_env.sh` before GPU work (sets CUDA_HOME/CPATH so
+  gsplat can JIT-build, and puts the env's `colmap` on PATH). Do not put torch/gsplat
+  in `pyproject.toml`; they are provisioned by the env only.
 - **CPU-only work** (login node): the package imports without torch (GPU imports
   are lazy). A quick CPU test env can be made with pydantic/pyyaml/numpy/pillow/
   opencv/pytest; run `pytest tests/unit tests/integration`.
@@ -23,45 +26,18 @@ Project-specific guidance for agents:
   frames, COLMAP DBs, and `*.MOV` are gitignored — stage explicit source paths.
 - Preferred smoke/heavy GPU node: **GPURACK5** (RTX PRO 6000, ~96 GB, idle).
 
-## Python environment on this machine (isiacluster) — READ FIRST
+## Environment note (isiacluster)
 
-**Do not use `conda` from `~/miniconda3` on this box, and do not "fix" conda by reinstalling it.**
+The NFS `/home` mount was fixed by an admin reboot on 2026-07-15 — conda/pip on
+`/home` work again (a directory `ls` is back to ~40 ms). The former NFSv4
+`TEST_STATEID` storm and its local-disk-conda workaround are obsolete and were
+removed. This box has **no GPU**; use it for the CPU test env, analysis, and
+plotting, and run GPU work on the GPURACK nodes via Slurm.
 
-Since 2026-07-14 the NFS `/home` mount on isiacluster is pathologically slow (NFSv4
-`TEST_STATEID` storm in the client kernel: every file open costs 40–400 ms, so the
-NFS conda appears to hang forever). The fix requires an admin reboot of the node.
-Until then, a working conda lives on the local disk:
-
-```bash
-source /var/tmp/AdrienK/conda-local.sh   # switches `conda` to /var/tmp/AdrienK/miniforge3
-conda activate my3DGS                   # my3DGS may not exist yet so create it if not
-```
-
-Notes:
-
-- The local `my3DGS` env mirrors `my3DGS/environment.yml` but with **CPU-only torch**
-  (this box has no GPU). It is for tests, analysis, and plotting only.
-- GPU training runs on the GPURACK nodes, whose NFS clients are healthy — they keep
-  using the original `~/miniconda3/envs/my3DGS`. Do not modify that env from here.
-- Anything touching many files under `/home` (pip installs into NFS envs, large
-  `find`/`grep` sweeps, conda from `~/miniconda3`) will be extremely slow until the
-  node is rebooted. Prefer short, targeted file access; the repo itself is small
-  enough to be workable.
-- The **Codex/ChatGPT VS Code extension** needed TWO fixes (2026-07-14):
-  (1) its `~/.codex` state dir (four live SQLite DBs — SQLite over storming NFS hangs)
-  now SYMLINKS to `/var/tmp/AdrienK/codex-home` (local disk); original preserved at
-  `~/.codex.nfs-backup`; node-local, state won't follow to other machines.
-  (2) its IPC socket dir `os.tmpdir()/codex-ipc` collided with ANOTHER USER's copy on
-  this shared node (their `/tmp/codex-ipc` is 755 → our `listen EACCES`, panel never
-  opens). Fix: per-user `TMPDIR=/tmp/tmp-$(id -u)` exported at the TOP of `~/.bashrc`
-  (above the interactivity guard, so the VS Code remote server inherits it). Requires
-  a VS Code server restart to take effect; keep this export even post-reboot — the
-  collision is an extension bug, not an NFS symptom.
-- Once `time ~/miniconda3/condabin/conda --version` is back to ~1 s (post-reboot),
-  these workarounds are obsolete: move `/var/tmp/AdrienK/codex-home` back to `~/.codex`
-  (replacing the symlink, after stopping the extension), delete
-  `/var/tmp/AdrienK/{miniforge3,conda-local.sh}`, remove `~/.codex.nfs-backup`,
-  and delete this section.
+Still relevant (an extension bug, not an NFS symptom, so kept post-reboot):
+per-user `TMPDIR=/tmp/tmp-$(id -u)` is exported at the top of `~/.bashrc` so the
+VS Code remote server / Codex extension don't collide with other users' IPC
+sockets on this shared node.
 
 ## Git & filesystem hygiene on this NFS mount (learned 2026-07-13/14, keep even post-reboot)
 
