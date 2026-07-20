@@ -127,9 +127,17 @@ One 4K iPhone clip of the carved ceiling panel, stood vertical:
 /home/AdrienK/Datasets/VideosForNVSpersonnal/Pavillon/IMG_9647.MOV
 ```
 
-Point `videos:` in the config at your copy. Only this single orbit is used — the
-3-clip merge reconstructs far worse (differing auto-exposure/WB across clips
-prevents the model reconciling them without appearance embeddings).
+Point `videos:` in the config at your copy. **Only this single orbit is used.**
+Merging clips was originally blocked by differing auto-exposure/white balance,
+which `train.appearance_embedding` now handles — but merging IMG_9649 was measured
+and still produced a worse model (see the negative result above). Exposure was not
+the only obstacle: the second clip enlarges the reconstructed volume while adding
+few views, so the Gaussian budget is spread thinner. Merge clips only when they
+re-observe the *same* surfaces from new angles, and raise `densification.cap_max`
+if the merged volume grows.
+
+IMG_9648 is unusable in any configuration — it is a weakly-connected walking clip
+that does not reconstruct.
 
 ## 3. Run the reconstruction
 
