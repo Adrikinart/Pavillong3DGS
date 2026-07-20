@@ -193,7 +193,11 @@ class TrainCfg(_Base):
     use_masks: bool = True
     mixed_precision: bool = True
     pose_optimization: bool = False
+    # Per-image appearance latents (GLO / NeRF-W style) decoded to a global affine
+    # colour transform. Enable when merging clips with differing auto-exposure/WB.
     appearance_embedding: bool = False
+    appearance_dim: int = 16
+    appearance_lr: float = 1e-3
     antialiasing: bool = True
     lr_means: float = 1.6e-4
     checkpoint_interval: int = 5000

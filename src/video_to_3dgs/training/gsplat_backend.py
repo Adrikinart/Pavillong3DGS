@@ -108,6 +108,17 @@ class GsplatBackend(TrainingBackend):
             train_ds.points, train_ds.point_colors, cfg.sh_degree, device,
             lr_means=cfg.lr_means, scene_scale=max(scene_scale, 1e-3))
 
+        # Per-image appearance model (multi-clip exposure/WB reconciliation).
+        # Kept OUT of `optimizers`, which the densification strategy owns and
+        # indexes per-Gaussian — these parameters are per-IMAGE, not per-Gaussian.
+        app_model = app_opt = None
+        if cfg.appearance_embedding:
+            from .appearance import AppearanceModel
+            app_model = AppearanceModel(len(train_ds), dim=cfg.appearance_dim).to(device)
+            app_opt = torch.optim.Adam(app_model.parameters(), lr=cfg.appearance_lr)
+            log.info("appearance embeddings ON: %d images x %d dims",
+                     len(train_ds), cfg.appearance_dim)
+
         # densification strategy
         dcfg = cfg.densification
         strategy = gsplat.DefaultStrategy(
@@ -136,6 +147,15 @@ class GsplatBackend(TrainingBackend):
             box_hi = torch.tensor(hi + m, dtype=torch.float32, device=device)
             log.info("room box (normalized): lo=%s hi=%s", np.round(lo - m, 2), np.round(hi + m, 2))
 
+        # appearance state travels in the checkpoint's `extra` (it is not a
+        # per-Gaussian tensor, so it cannot ride in params/optimizers)
+        def _ckpt_extra(base: dict | None = None) -> dict:
+            e = dict(base or {})
+            if app_model is not None:
+                e["appearance"] = {k: v.detach().cpu()
+                                   for k, v in app_model.state_dict().items()}
+            return e
+
         # resume
         start_step = 0
         if ctx.resume:
@@ -143,6 +163,19 @@ class GsplatBackend(TrainingBackend):
             if latest is not None:
                 start_step = load_checkpoint(latest, params, optimizers) + 1
                 log.info("resumed from %s at step %d", latest.name, start_step)
+                if app_model is not None:
+                    try:
+                        st = torch.load(latest, map_location="cpu", weights_only=False)
+                        app_sd = (st.get("extra") or {}).get("appearance")
+                        if app_sd and app_sd["embed.weight"].shape[0] == app_model.n_images:
+                            app_model.load_state_dict(app_sd)
+                            log.info("resumed appearance embeddings")
+                        elif app_sd:
+                            log.warning("appearance embeddings in checkpoint cover %d images "
+                                        "but dataset has %d; starting them fresh",
+                                        app_sd["embed.weight"].shape[0], app_model.n_images)
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("could not restore appearance embeddings: %s", e)
 
         metrics = MetricsLogger(layout.metrics_jsonl(tr_id), layout.tensorboard_dir(tr_id),
                                 enable_tb=ctx.config.monitoring.tensorboard)
@@ -212,6 +245,10 @@ class GsplatBackend(TrainingBackend):
                 renders, alphas, info = self._rasterize(gsplat, params, vm, K, w, h, sh_now,
                                                         near, far)
                 render = renders[0]
+            # per-image photometric correction (identity at init; cannot encode
+            # geometry, only a global affine colour change)
+            if app_model is not None:
+                render = app_model(idx, render)
             loss, l1, ssim_val = photometric_loss(render, gt, mask_t, cfg.l1_lambda,
                                                   cfg.ssim_lambda)
             depth_loss_val = 0.0
@@ -229,6 +266,9 @@ class GsplatBackend(TrainingBackend):
             for opt in optimizers.values():
                 opt.step()
                 opt.zero_grad(set_to_none=True)
+            if app_opt is not None:
+                app_opt.step()
+                app_opt.zero_grad(set_to_none=True)
             means_sched.step()   # decay position LR so Gaussians settle (sharpness)
             # Densify/prune — but FREEZE growth once the cap is reached instead of
             # crashing. gsplat's DefaultStrategy has no built-in cap, so gate it here.
@@ -270,13 +310,20 @@ class GsplatBackend(TrainingBackend):
                     "max_scale": max_scale, "mean_opacity": mean_opa,
                     "sh_degree": sh_now, "iters_per_s": round(ips, 2),
                     "depth_loss": depth_loss_val,
+                    "appearance_drift": app_model.drift() if app_model is not None else 0.0,
                 })
 
             # validation
             if val_ds and (step % cfg.validation_interval == 0 and step > 0 or step == max_iters - 1):
+                def _val_render(i, _step=step):
+                    r = self._rasterize(gsplat, params, *val_ds.camera_tensors(i, device),
+                                        min(cfg.sh_degree, _step // 1000), near, far)[0][0]
+                    # score against ONE canonical appearance; fitting a held-out
+                    # image's own exposure would leak test information
+                    return app_model.canonical(r) if app_model is not None else r
+
                 vres = evaluate_split(
-                    lambda i: self._rasterize(gsplat, params, *val_ds.camera_tensors(i, device),
-                                              min(cfg.sh_degree, step // 1000), near, far)[0][0],
+                    _val_render,
                     val_ds, device, out_dir=renders_dir / f"val_{step:07d}",
                     compute_lpips=False, masked=cfg.use_masks, max_images=cfg.val_render_count)
                 metrics.log(step, {"psnr": vres["psnr"], "ssim": vres["ssim"]}, kind="val")
@@ -286,17 +333,17 @@ class GsplatBackend(TrainingBackend):
                     best_val = {"psnr": vres["psnr"], "step": step}
                 if health.check_improvement(vres["psnr"] or 0.0, step):
                     log.info("early stopping at step %d (no improvement)", step)
-                    save_checkpoint(ckpt_dir, params, optimizers, step, {"early_stop": True})
+                    save_checkpoint(ckpt_dir, params, optimizers, step, _ckpt_extra({"early_stop": True}))
                     break
 
             # checkpoint
             if step > 0 and step % cfg.checkpoint_interval == 0:
-                save_checkpoint(ckpt_dir, params, optimizers, step)
+                save_checkpoint(ckpt_dir, params, optimizers, step, _ckpt_extra())
 
             # preemption
             if preempt():
                 log.warning("preemption signal received; checkpointing at step %d", step)
-                save_checkpoint(ckpt_dir, params, optimizers, step, {"preempted": True})
+                save_checkpoint(ckpt_dir, params, optimizers, step, _ckpt_extra({"preempted": True}))
                 status = "PREEMPTED"
                 break
 
@@ -319,7 +366,7 @@ class GsplatBackend(TrainingBackend):
                              n_before, len(idx), 100 * (1 - len(idx) / max(n_before, 1)))
 
         final = save_checkpoint(ckpt_dir, params, optimizers, min(step, max_iters - 1),
-                                {"final": True})
+                                _ckpt_extra({"final": True}))
         metrics.close()
         n_final = int(params["means"].shape[0])
         log.info("training %s at step %d: %d gaussians, best_val_psnr=%s",

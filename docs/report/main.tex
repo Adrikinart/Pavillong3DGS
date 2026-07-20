@@ -1,0 +1,37 @@
+% Standalone wrapper so docs/report/theory.tex can be compiled and checked on its
+% own, and dropped into a larger report with \input{theory} unchanged.
+%
+%   latexmk -pdf main.tex        (or: pdflatex main && bibtex main && pdflatex main x2)
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{bm}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+
+\title{Video to 3D Gaussian Splatting:\\Reconstructing a Carved Ceiling Panel}
+\author{Adrien Kinart}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We reconstruct a carved wooden ceiling panel from handheld video using 3D Gaussian
+Splatting. The capture is adversarial for the method: single-sided, low-parallax
+and close-range on a near-planar relief. We describe the theory behind each
+component of the pipeline and the four regularisation mechanisms added to adapt it
+to this regime --- global structure-from-motion, monocular depth priors, spatial
+bounding with floater suppression, and per-image appearance modelling for
+multi-clip merging.
+\end{abstract}
+
+\input{theory}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

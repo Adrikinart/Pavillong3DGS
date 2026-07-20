@@ -75,3 +75,13 @@ scratch/
 .vscode/
 .idea/
 .DS_Store
+
+# LaTeX build artifacts (docs/report)
+*.aux
+*.bbl
+*.blg
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz

@@ -1,0 +1,395 @@
+% !TeX root = main.tex
+%
+% Theory section for the Pavillon 3D Gaussian Splatting report.
+% Compile with:  latexmk -pdf main.tex   (see main.tex in this directory)
+
+\section{Theoretical Background}
+\label{sec:theory}
+
+This section develops the theory underlying the reconstruction pipeline: the
+Gaussian-splatting scene representation and its differentiable rasteriser
+(\S\ref{sec:3dgs}), the structure-from-motion stage that supplies camera poses
+(\S\ref{sec:sfm}), the adaptive density control that grows the model
+(\S\ref{sec:densification}), and the four regularisation mechanisms that adapt the
+method to our capture: monocular depth priors, spatial bounding, floater
+suppression, and per-image appearance modelling
+(\S\ref{sec:sparse}--\S\ref{sec:appearance}). Throughout, we highlight
+\emph{why} each component is required by the specific difficulty of our data: a
+single-sided, low-parallax, close-range capture of a planar carved relief.
+
+%---------------------------------------------------------------------------
+\subsection{Scene representation: 3D Gaussian Splatting}
+\label{sec:3dgs}
+
+Neural radiance fields represent a scene as a continuous function evaluated by
+ray marching \cite{mildenhall2020nerf}, which couples rendering cost to sample
+count. 3D Gaussian Splatting (3DGS) \cite{kerbl2023gaussian} instead adopts an
+explicit, unstructured set of anisotropic Gaussian primitives that are
+\emph{rasterised}, giving real-time rendering while remaining fully
+differentiable.
+
+The scene is a set $\mathcal{G}=\{g_i\}_{i=1}^{N}$ where each primitive carries a
+mean $\bm{\mu}_i\in\mathbb{R}^3$, a covariance $\bm{\Sigma}_i\in\mathbb{R}^{3\times3}$,
+an opacity $o_i\in\mathbb{R}$ and view-dependent colour coefficients. The spatial
+support is the unnormalised Gaussian
+\begin{equation}
+  G_i(\bm{x}) \;=\; \exp\!\Big(-\tfrac{1}{2}(\bm{x}-\bm{\mu}_i)^{\!\top}\,
+  \bm{\Sigma}_i^{-1}\,(\bm{x}-\bm{\mu}_i)\Big).
+  \label{eq:gaussian}
+\end{equation}
+
+\paragraph{Parameterisation of the covariance.}
+A covariance matrix must remain symmetric positive semi-definite, which gradient
+descent on its six free entries does not guarantee. 3DGS therefore factorises it
+into a rotation and an axis-aligned scaling,
+\begin{equation}
+  \bm{\Sigma}_i \;=\; \bm{R}(\bm{q}_i)\,\bm{S}_i\,\bm{S}_i^{\!\top}\,\bm{R}(\bm{q}_i)^{\!\top},
+  \qquad
+  \bm{S}_i=\operatorname{diag}\!\big(\exp(\bm{s}_i)\big),
+  \label{eq:covariance}
+\end{equation}
+optimising a unit quaternion $\bm{q}_i$ and \emph{log}-scales
+$\bm{s}_i\in\mathbb{R}^3$. The exponential keeps scales strictly positive and makes
+the parameterisation multiplicative, so a single learning rate behaves sensibly
+across the wide range of primitive sizes in a scene. Opacity is likewise stored as
+a logit and mapped through a sigmoid, $\alpha_i=\sigma(o_i)\in(0,1)$. These
+reparameterisations matter operationally: our floater diagnostics
+(\S\ref{sec:floaters}) threshold $\sigma(o_i)$ and $\max\exp(\bm{s}_i)$ rather
+than the raw parameters.
+
+\paragraph{Projection and the 2D covariance.}
+Rendering requires the image-space footprint of each primitive. Under a viewing
+transform $\bm{W}$ (world-to-camera) followed by a projective map, the projection
+is nonlinear, so 3DGS adopts the EWA splatting approximation
+\cite{zwicker2001ewa,zwicker2001surface}: linearise the projective map about
+$\bm{\mu}_i$ with Jacobian $\bm{J}$ and propagate the covariance,
+\begin{equation}
+  \bm{\Sigma}'_i \;=\; \bm{J}\,\bm{W}\,\bm{\Sigma}_i\,\bm{W}^{\!\top}\bm{J}^{\!\top},
+  \label{eq:proj}
+\end{equation}
+retaining the upper-left $2\times2$ block as the screen-space covariance. The
+first-order approximation is accurate when a primitive is small relative to its
+depth --- an assumption that our extreme close-up views stress, since a primitive
+covering a large solid angle has a genuinely non-Gaussian footprint.
+
+\paragraph{Compositing.}
+Colour is accumulated by front-to-back alpha compositing, the discretisation of
+the volume-rendering integral under an absorption-emission model
+\cite{max1995optical}. For a pixel $\bm{p}$, with primitives sorted by depth,
+\begin{equation}
+  \bm{C}(\bm{p}) \;=\; \sum_{i=1}^{N} \bm{c}_i(\bm{d})\,\hat{\alpha}_i(\bm{p})
+  \prod_{j<i}\big(1-\hat{\alpha}_j(\bm{p})\big),
+  \qquad
+  \hat{\alpha}_i(\bm{p}) = \alpha_i\,G'_i(\bm{p}),
+  \label{eq:compositing}
+\end{equation}
+where $G'_i$ is the projected 2D Gaussian~\eqref{eq:proj} evaluated at the pixel
+and $\bm{c}_i(\bm{d})$ is the colour emitted toward the viewing direction
+$\bm{d}$, expanded in spherical harmonics,
+$\bm{c}_i(\bm{d})=\sum_{\ell=0}^{L}\sum_{m=-\ell}^{\ell}\bm{k}_{i,\ell m}\,Y_{\ell m}(\bm{d})$.
+We use $L=3$ (16 coefficients per colour channel) and, following common practice,
+introduce the bands progressively during training so that low-frequency albedo is
+fitted before view-dependent effects.
+
+Because \eqref{eq:compositing} is a product of per-primitive terms, every quantity
+is differentiable and gradients flow to positions, covariances, opacities and
+colours simultaneously. This is also the source of a characteristic failure mode:
+the same pixel colour can be explained either by a correctly placed opaque
+primitive or by a stack of misplaced semi-transparent ones. Nothing in
+\eqref{eq:compositing} prefers the former, which is precisely why explicit
+regularisation (\S\ref{sec:floaters}) is necessary.
+
+\paragraph{Photometric objective.}
+Training minimises a combination of an $\ell_1$ term and a structural
+dissimilarity term \cite{wang2004ssim},
+\begin{equation}
+  \mathcal{L}_{\text{photo}} \;=\; (1-\lambda)\,\big\lVert \hat{\bm{I}}-\bm{I}\big\rVert_1
+  \;+\; \lambda\,\big(1-\mathrm{SSIM}(\hat{\bm{I}},\bm{I})\big),
+  \label{eq:photo}
+\end{equation}
+with $\lambda=0.2$. The SSIM term supplies a spatially structured gradient that a
+purely per-pixel loss lacks, which matters for high-frequency relief detail.
+Optimisation uses Adam \cite{kingma2015adam} with per-parameter-group learning
+rates; the positional learning rate is decayed exponentially so primitives settle
+rather than jitter, a detail that proved decisive for sharpness in our runs.
+
+%---------------------------------------------------------------------------
+\subsection{Camera calibration: incremental versus global SfM}
+\label{sec:sfm}
+
+3DGS optimises geometry \emph{given} camera poses; those come from
+structure-from-motion. The incremental pipeline of COLMAP
+\cite{schoenberger2016sfm} extracts SIFT features \cite{lowe2004sift}, matches
+them, then seeds a two-view reconstruction and repeatedly registers one image at a
+time, triangulating and running bundle adjustment. Incremental growth is robust on
+well-connected sets but is greedy: registration proceeds only where the current
+model already provides sufficient $2$D--$3$D correspondences, so a weakly
+connected region can be abandoned entirely.
+
+Global SfM instead estimates all camera poses simultaneously from the epipolar
+graph. GLOMAP \cite{pan2024glomap} performs global rotation averaging followed by
+a joint global positioning step that estimates camera centres and points together,
+avoiding the classical fragility of separate translation averaging. Because it
+considers the whole view graph at once, it does not inherit the incremental
+pipeline's order dependence.
+
+This distinction was decisive for our capture. On the single-orbit Pavillon clip,
+incremental COLMAP registered $82$ images whereas GLOMAP registered $181$ of
+$193$ from identical features and matches --- a $2.2\times$ coverage gain. Low
+image overlap produces exactly the weakly connected graph that penalises greedy
+registration, and coverage is the binding constraint on downstream quality: a
+surface observed by no registered camera cannot be reconstructed at all.
+
+%---------------------------------------------------------------------------
+\subsection{Adaptive density control}
+\label{sec:densification}
+
+A fixed primitive count cannot match a scene's spatially varying complexity, so
+3DGS \emph{adapts} the set during optimisation \cite{kerbl2023gaussian}. The
+driving signal is the magnitude of the loss gradient with respect to the
+\emph{projected} (screen-space) mean, averaged over the views in which a primitive
+was visible,
+\begin{equation}
+  \tau_i \;=\; \Big\lVert \frac{\partial \mathcal{L}}{\partial \bm{\mu}'_i}\Big\rVert.
+\end{equation}
+A large $\tau_i$ indicates that the renderer would reduce the loss by moving the
+primitive --- a signature of under-reconstruction. Where $\tau_i$ exceeds a
+threshold, the model is refined in one of two ways:
+\begin{itemize}
+  \item \textbf{Cloning} (primitive smaller than a scene-scale-relative bound):
+        duplicate it and displace along the positional gradient, adding capacity
+        to an under-populated region;
+  \item \textbf{Splitting} (primitive larger than that bound): replace it by two
+        smaller primitives sampled from its own distribution, with scales divided
+        by a constant, refining an over-large blob.
+\end{itemize}
+Periodically all opacities are reset toward zero; primitives that are genuinely
+supported by the data recover, while those that merely accumulated as
+semi-transparent clutter fall below the pruning threshold and are removed.
+
+Two scene-scale dependencies deserve emphasis, because both caused real failures
+in this project. First, the positional learning rate is scaled by the scene
+extent; second, the clone-versus-split decision compares primitive size against a
+scene-scale-relative bound. Estimating the scene extent from the raw point cloud
+makes it hostage to SfM outliers: a single stray point inflates the extent, which
+simultaneously raises the positional learning rate (primitives jitter, producing
+blur) and raises the split threshold (primitives are only ever cloned, never
+shrink). We therefore define the extent from \emph{camera centres} rather than
+points, following the original spatial-scale convention.
+
+%---------------------------------------------------------------------------
+\subsection{The sparse-view problem and monocular depth priors}
+\label{sec:sparse}
+
+Equation~\eqref{eq:compositing} is severely underdetermined when views are few or
+share little parallax. A set of primitives can reproduce every training image
+exactly while placing mass at physically wrong depths, because depth is only
+constrained by \emph{disagreement} between views. With a single-sided capture the
+disagreement is small, and the photometric loss alone cannot distinguish a correct
+surface from a family of depth-shifted alternatives.
+
+The established remedy is to import geometric knowledge from a monocular depth
+network \cite{ranftl2022midas,yang2024depthanythingv2} and use it to regularise
+the rendered depth, as in FSGS \cite{zhu2024fsgs}, SparseGS
+\cite{xiong2024sparsegs} and DNGaussian \cite{li2024dngaussian}. The rendered
+depth is obtained by compositing depth exactly as colour is composited in
+\eqref{eq:compositing}:
+\begin{equation}
+  \hat{D}(\bm{p}) \;=\; \sum_i d_i\,\hat{\alpha}_i(\bm{p}) \prod_{j<i}\big(1-\hat{\alpha}_j(\bm{p})\big).
+\end{equation}
+
+\paragraph{Why the loss must be affine-invariant.}
+Monocular networks trained on mixed datasets predict depth only \emph{up to an
+unknown scale and shift} \cite{ranftl2022midas}; the prediction lives in a
+disparity-like space with no metric meaning. Penalising
+$\lVert \hat{D}-D_{\text{mono}}\rVert$ directly would therefore impose an
+arbitrary global scale on the reconstruction and fight the SfM geometry. The loss
+must be invariant to the ambiguity, a requirement dating to the scale-invariant
+objective of Eigen et al.~\cite{eigen2014depth}.
+
+We adopt the Pearson correlation \cite{pearson1895} between rendered and predicted
+depth over the pixels of a view,
+\begin{equation}
+  \mathcal{L}_{\text{depth}} \;=\; 1-\rho\big(\hat{D},\,D_{\text{mono}}\big),
+  \qquad
+  \rho(X,Y)=\frac{\operatorname{Cov}(X,Y)}{\sigma_X\,\sigma_Y}.
+  \label{eq:pearson}
+\end{equation}
+For any $a>0$ and $b\in\mathbb{R}$ we have $\rho(aX+b,Y)=\rho(X,Y)$, so
+\eqref{eq:pearson} is exactly invariant to the affine ambiguity: it constrains the
+depth \emph{ordering} of the scene while leaving scale and offset to be fixed by
+the cameras. Note the sign convention matters --- since the network emits a
+disparity-like quantity (large means \emph{near}), it must be inverted before use,
+or the loss would drive the geometry to the reflection of the correct surface.
+
+The prior is ramped in only after the photometric term has established coarse
+structure, so that a noisy monocular estimate does not dominate early
+optimisation.
+
+%---------------------------------------------------------------------------
+\subsection{Floaters: spatial bounding and opacity/scale control}
+\label{sec:floaters}
+
+``Floaters'' are primitives occupying empty space, typically faint and often
+large, which reproduce training views by acting as a diffuse haze near the cameras
+while corrupting novel views. As noted after \eqref{eq:compositing}, the
+compositing model gives no intrinsic preference for compact opaque geometry over
+diffuse semi-transparent clutter; in the sparse-view regime such clutter is an
+easy local minimum. In NeRF-style methods the standard countermeasure is the
+distortion loss of Mip-NeRF~360 \cite{barron2022mipnerf360}, which penalises
+weight dispersed along a ray and thereby encourages compact ray termination;
+Mip-Splatting \cite{yu2024mipsplatting} addresses the related scale-aliasing
+artefacts that appear when primitives are observed at sampling rates far from
+those seen in training.
+
+We use two direct, geometrically motivated constraints. First, a \emph{scene
+bound}: the capture took place in a room, so admissible geometry lies within the
+axis-aligned bounding box of the camera centres and the SfM points, dilated by a
+margin $m$,
+\begin{equation}
+  \mathcal{B} \;=\; \big[\bm{l}-m(\bm{h}-\bm{l}),\;\bm{h}+m(\bm{h}-\bm{l})\big],
+  \qquad
+  \bm{l}=\min(\mathcal{P}\cup\mathcal{C}),\;\;
+  \bm{h}=\max(\mathcal{P}\cup\mathcal{C}).
+\end{equation}
+Primitives leaving $\mathcal{B}$ have their opacity driven to zero and are then
+removed by the existing opacity prune. Second, an explicit \emph{scale and opacity
+criterion}: primitives whose largest scale exceeds a fraction of the scene extent,
+or whose opacity falls below a threshold, are suppressed and finally pruned.
+
+Suppressing rather than deleting mid-training is deliberate: the density-control
+state of \S\ref{sec:densification} is indexed per primitive, so removing entries
+externally would desynchronise it. Driving opacity to $\sigma(-20)\approx 2\times10^{-9}$
+changes no tensor shape, makes the primitive invisible, and lets the existing
+prune reclaim it.
+
+Empirically these constraints removed $\approx\!18\text{--}20\%$ of primitives.
+Crucially, the diagnostic revealed which mechanism did the work: only $0.01\%$ of
+baseline primitives lay outside $\mathcal{B}$, so the bound acted as a safety net,
+whereas $18.2\%$ had opacity below $0.02$ and the largest scales spanned the whole
+scene. The floaters here were in-volume haze rather than runaway geometry, and it
+was the opacity/scale criterion that eliminated them --- median opacity rose from
+$0.51$ to $0.88$.
+
+%---------------------------------------------------------------------------
+\subsection{Surface-aligned variants}
+\label{sec:2dgs}
+
+Because 3D Gaussians are volumetric, their zero-crossing does not define a
+surface, and depth composited through a thick primitive is biased. 2D Gaussian
+Splatting \cite{huang20242dgs} replaces each ellipsoid with an oriented planar
+disk, so the primitive \emph{is} a surface element with a well-defined normal;
+combined with normal-consistency and distortion regularisers it yields markedly
+better geometry, and SuGaR \cite{guedon2024sugar} similarly binds Gaussians to an
+extractable mesh.
+
+Either representation supports mesh extraction by fusing rendered depth maps into
+a truncated signed-distance volume \cite{curless1996tsdf} and running marching
+cubes, which is attractive here because the object of interest is a relief surface
+rather than a radiance field. Note that this route does not strictly require
+surface-aligned primitives: composited depth from a 3D Gaussian model can be fused
+in the same way, at the cost of the depth bias induced by volumetric primitives.
+
+We evaluated 2DGS and report a negative result: on this capture it produced flat,
+featureless renderings at PSNR~$\approx13$. The reason is instructive rather than
+incidental. Surface-aligned primitives must recover an orientation as well as a
+position, and disk normals are constrained mainly by observing a surface from
+multiple directions. A single-sided capture supplies almost no such signal, so the
+added constraint removes degrees of freedom the photometric loss was using without
+supplying the multi-view evidence needed to determine the ones that remain. The
+same regularisation that improves well-covered scenes is therefore harmful here.
+
+%---------------------------------------------------------------------------
+\subsection{Per-image appearance modelling}
+\label{sec:appearance}
+
+Coverage is the binding constraint (\S\ref{sec:sfm}), and the cheapest source of
+additional coverage is additional clips of the same object. This is obstructed by
+photometry rather than geometry: a handheld camera re-runs auto-exposure and
+auto-white-balance per clip, so the same surface is recorded with different
+responses. The model in \eqref{eq:compositing} has no parameter expressing ``same
+radiance, different camera response'', so the photometric loss
+\eqref{eq:photo} cannot be driven to zero anywhere; residual gradients stay high
+across the whole image, and \S\ref{sec:densification} interprets uniformly high
+$\tau_i$ as under-reconstruction and densifies without bound. Our three-clip merge
+duly plateaued near PSNR~$14$ while a single clip reached~$24$.
+
+NeRF-in-the-Wild \cite{martinbrualla2021nerfw} solves this by attaching a latent
+appearance code $\bm{\ell}_k$ to each image $k$ and conditioning the emitted
+radiance on it. The codes are free parameters optimised jointly with the scene ---
+generative latent optimisation \cite{bojanowski2018glo} --- rather than the output
+of an encoder. We use the same idea with a deliberately low-capacity decoder: a
+small MLP maps $\bm{\ell}_k$ to a global affine colour transform applied to the
+rendered image,
+\begin{equation}
+  \hat{\bm{I}}_k^{\text{corr}}(\bm{p}) \;=\; \bm{M}(\bm{\ell}_k)\,\hat{\bm{I}}_k(\bm{p}) \;+\; \bm{b}(\bm{\ell}_k),
+  \qquad
+  \bm{M}\in\mathbb{R}^{3\times3},\;\bm{b}\in\mathbb{R}^{3},
+  \label{eq:appearance}
+\end{equation}
+with the decoder initialised so that $\bm{M}=\bm{I}$ and $\bm{b}=\bm{0}$;
+training therefore starts exactly at the identity and departs from it only if
+doing so reduces the loss.
+
+\paragraph{Why this cannot absorb geometry.}
+Capacity control is the crux: a per-image correction expressive enough to repaint
+pixels individually would simply memorise each training view, destroying the
+multi-view constraint that makes reconstruction possible. The transform
+\eqref{eq:appearance} is applied with the \emph{same} $(\bm{M},\bm{b})$ at every
+pixel, so for any spatial permutation $\pi$ of the pixels,
+\begin{equation}
+  \bm{M}\,\hat{\bm{I}}\big(\pi(\bm{p})\big)+\bm{b}
+  \;=\;
+  \Big(\bm{M}\,\hat{\bm{I}}(\bm{p})+\bm{b}\Big)\circ\pi ,
+\end{equation}
+i.e.\ the correction commutes with any rearrangement of image content. A map that
+is invariant to where things are cannot encode where things are: it carries
+exactly zero spatial information and can represent only a global photometric
+change. It can absorb exposure, gain and white-balance drift, and nothing else.
+
+At evaluation time we apply the transform decoded from the \emph{mean} training
+latent, giving one canonical appearance. Fitting a held-out image's own latent
+would leak information from the test image into the prediction and inflate the
+reported metrics.
+
+%---------------------------------------------------------------------------
+\subsection{Pose refinement}
+\label{sec:pose}
+
+A residual error source is the poses themselves: \S\ref{sec:sfm} treats them as
+fixed, yet low-overlap SfM yields noisier extrinsics, and a pose error is
+indistinguishable from a geometry error to the photometric loss. Joint
+optimisation of poses with the scene, as in BARF \cite{lin2021barf}, addresses
+this, with the caveat that a high-frequency representation admits many poor local
+minima --- BARF's central observation is that the optimisation must be coarse-to-fine.
+The analogous mechanism in our setting is the progressive introduction of
+spherical-harmonic bands (\S\ref{sec:3dgs}).
+
+%---------------------------------------------------------------------------
+\subsection{Evaluation}
+\label{sec:eval}
+
+We report PSNR, SSIM \cite{wang2004ssim} and LPIPS \cite{zhang2018lpips} on
+held-out views. The three are deliberately complementary: PSNR derives from mean
+squared error and is dominated by low-frequency agreement, rewarding a blurred
+prediction; SSIM compares local luminance, contrast and structure statistics and
+so is sensitive to the relief we care about; LPIPS compares deep features and
+correlates better with human judgement of perceptual similarity.
+
+Two methodological cautions apply to the comparisons in this report. First, model
+selection must use validation views only --- selecting on the test split silently
+converts it into a validation split. Second, these metrics are \emph{not}
+comparable across reconstructions built at different image resolutions or with
+different held-out splits: PSNR in particular shifts with the spatial frequency
+content of the images. Where we compare a higher-resolution reconstruction against
+a lower-resolution one we therefore compare \emph{distributions} over views ---
+medians and the frequency of catastrophic views --- and state the caveat
+explicitly, rather than reporting a single number as if it were a like-for-like
+improvement.
+
+Finally, a scalar mean conceals the failure structure that matters. Per-view
+analysis of our reconstruction showed the errors were not uniformly distributed
+but concentrated entirely in extreme close-ups at grazing incidence, which
+identified a spatial-frequency deficit --- the source images had been downscaled
+--- and directly motivated the higher-resolution reconstruction. Aggregate metrics
+diagnose nothing; the distribution, and the images themselves, do.

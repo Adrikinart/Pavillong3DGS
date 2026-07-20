@@ -1,0 +1,102 @@
+# Multi-clip Pavillon reconstruction with per-image appearance embeddings.
+#
+# Why: the high-detail run showed the remaining catastrophic views are
+# near-featureless wood plank at grazing angles — low texture AND almost no
+# parallax with any other camera. More pixels cannot reconstruct a patch that only
+# one camera saw well, so the next lever is more VIEWPOINTS.
+#
+# Merging clips was previously impossible: each handheld clip carries its own
+# auto-exposure / white-balance response, the photometric loss cannot represent
+# "same surface, two camera responses", and the 3-clip merge collapsed to ~PSNR 14
+# while a single clip reached ~24. `train.appearance_embedding` now gives each
+# training image a latent decoded into a global affine colour transform (GLO /
+# NeRF-W style), which absorbs that drift without being able to encode geometry.
+#
+# IMG_9648 is deliberately excluded: it is a weakly-connected walking clip that
+# does not reconstruct (see state/progress.md).
+object_name: pavillon_multiclip
+capture_mode: orbit
+profile:
+  name: rtxpro
+  nodelist: GPURACK2
+videos:
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/Pavillon/IMG_9647.MOV
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/Pavillon/IMG_9649.MOV
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 3.0
+  max_frames: 520              # across BOTH clips
+  min_frames: 80
+  resize_long_edge: 2560
+
+filter_frames:
+  enabled: true
+  blur_var_min: 50.0           # now measured at a fixed reference scale
+
+generate_masks:
+  enabled: false
+
+run_colmap:
+  matcher: exhaustive          # cross-clip pairs are essential to link the clips
+  mapper_backend: glomap
+  camera_model: OPENCV
+  single_camera: false         # two clips -> allow per-clip intrinsics
+  sequential_overlap: 15
+
+validate_colmap:
+  minimum_registration_ratio: 0.50   # merging clips is harder; warn, don't fail
+  hard_fail: false
+
+normalize_scene:
+  method: points
+
+split_dataset:
+  strategy: pose_aware
+
+train:
+  backend: gsplat
+  train_run_id: gsplat_multiclip_30k
+  max_iterations: 30000
+  sh_degree: 3
+  use_masks: false
+  antialiasing: true
+  checkpoint_interval: 5000
+  validation_interval: 1000
+  val_render_count: 4
+  # --- the point of this run ---
+  appearance_embedding: true
+  appearance_dim: 16
+  appearance_lr: 1.0e-3
+  densification:
+    strategy: default
+    start_iteration: 500
+    stop_iteration: 15000
+    interval: 100
+    grad_threshold: 0.0003
+    opacity_reset_interval: 3000
+    prune_opacity: 0.005
+    cap_max: 1500000
+  bounds:
+    enabled: true
+    margin: 0.5
+    prune_every: 500
+  floater:
+    enabled: true
+    max_scale_frac: 0.15
+    min_opacity: 0.005
+    prune_every: 500
+  depth_prior:
+    enabled: true
+    model: depth-anything/Depth-Anything-V2-Small-hf
+    lambda_depth: 0.1
+    start_iter: 2000
+    loss: pearson
+
+report:
+  enabled: true
+  figures: [training_curves, qualitative, gaussian_stats, per_view, gaussian_centers]
+  videos: [orbit, progression]
+  orbit_frames: 150
+  orbit_elevation_deg: 15.0
+  video_fps: 30
