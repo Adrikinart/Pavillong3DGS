@@ -144,32 +144,42 @@ clips at **332/332 registered, 0.921px reproj, 170 232 points, 266 train views**
 and `appearance_drift` settled at **0.05-0.066** (non-zero => the clips really do
 differ photometrically and the latents are absorbing it).
 
-**But the merged reconstruction is worse than the single-clip one**: test PSNR
-**19.02** / SSIM 0.824 / LPIPS 0.362, versus 23.08 / 0.846 / 0.310 for
-`gsplat_hidetail_30k`. Decomposing the gap on validation renders by fitting the
-optimal per-channel gain+bias (which removes any *global* photometric mismatch):
+**A measurement bug made this look far worse than it was (corrected).** The
+`evaluate` stage rebuilt the Gaussians from the checkpoint and rendered *raw* — it
+never restored the appearance model. So held-out views were scored on the
+UNCORRECTED render while training had optimised corrected ones: a systematic
+photometric penalty unrelated to reconstruction quality. Fixed by restoring the
+latents in `evaluate.py` and scoring each view under the mean appearance of **its
+own source clip** (`AppearanceModel.canonical_for`), using clip identity + that
+clip's TRAINING images only — the held-out pixels are never used, unlike NeRF-W
+which fits a latent on half the test image.
 
-| model | raw PSNR | after colour fit | photometric share |
+| multi-clip test | PSNR | SSIM | LPIPS |
 |---|---|---|---|
-| hi-detail  | 24.10 | 24.49 | 0.39 dB |
-| multi-clip | 18.64 | 20.76 | **2.13 dB** |
+| before (uncorrected — the bug) | 19.02 | 0.824 | 0.362 |
+| **after (per-clip appearance)** | **22.03** | **0.833** | **0.342** |
 
-So ~1.7 dB of the loss is an **evaluation artifact** — we score against the *mean*
-training latent, and a single canonical appearance matches neither clip when the
-drift is real (this is a genuine methodological cost of appearance embeddings, and
-why NeRF-W fits a test latent on a held-out image half). The remaining **~3.7 dB is
-real geometric degradation**: inspecting val renders shows most views are plausible
-but at least one is catastrophically smeared.
+That recovered **3.02 dB**, shrinking the gap to `gsplat_hidetail_30k` (23.08) from
+4.06 dB to **1.05 dB**. An earlier entry here claimed "~3.7 dB is real geometric
+degradation", derived from fitting a per-channel gain+bias to four validation
+renders. **That was an overestimate and is retracted**: the real model applies a
+full 3x3 cross-channel matrix over 33 test views, so it corrects more than that
+cruder proxy could. The lesson is that a hand-rolled diagnostic is itself a model
+and can be wrong — the direct measurement settled it.
 
-Why: the clips are co-located (camera centroids 0.39 apart vs a 0.46 cloud radius,
-so they do overlap) but IMG_9649 contributes only 48 train views while enlarging the
-reconstructed volume (point extent [2.53, 9.61, 8.7]). The same 1.5M Gaussian budget
-is then spread over more scene, and the thinly-observed regions reconstruct badly and
-land in val/test. **Coverage only helps when new views re-observe the SAME surfaces
-from new angles; views that extend the scene add complexity without adding
-constraint.** Conclusion: keep `gsplat_hidetail_30k` as the deliverable; retain the
-appearance implementation for captures that genuinely re-observe the same region
-(and raise `cap_max` if the merged volume grows).
+**A real but modest regression remains**: median PSNR 24.48 -> 22.82, catastrophic
+views (<18 dB) 11% -> **24%**, SSIM 0.846 -> 0.833. The per-clip breakdown localises
+it: the ADDED clip's own test views score fine (img_9649: mean 23.68) while the
+ORIGINAL clip's views degrade (img_9647: 21.81). Merging hurt the region that
+previously had the entire Gaussian budget to itself. The clips are co-located
+(camera centroids 0.39 apart vs a 0.46 cloud radius) but IMG_9649 adds only 48 train
+views while enlarging the reconstructed volume (point extent [2.53, 9.61, 8.7]), so
+1.5M Gaussians now cover more scene.
+
+Conclusion: keep `gsplat_hidetail_30k` as the deliverable, but the multi-clip route
+is viable rather than dead — the obvious untested fix is to raise
+`densification.cap_max` in proportion to the enlarged volume, since the failure is
+budget dilution, not appearance and not SfM.
 
 ## Resolution/coverage beats regularizer tuning (high-detail run)
 Per-view analysis of the A3 model showed every catastrophic held-out view

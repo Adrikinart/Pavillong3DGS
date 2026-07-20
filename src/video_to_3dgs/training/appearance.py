@@ -23,8 +23,22 @@ test information).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import torch
 import torch.nn as nn
+
+
+def clip_key(name: str) -> str:
+    """Source-clip identifier for a frame name.
+
+    ``img_9647_000008.jpg`` -> ``img_9647``. Frames are named
+    ``<clip>_<frameindex>``, so stripping the trailing index groups every frame
+    that came from one video — and therefore one auto-exposure/white-balance
+    regime.
+    """
+    stem = Path(name).stem
+    return stem.rsplit("_", 1)[0] if "_" in stem else stem
 
 
 class AppearanceModel(nn.Module):
@@ -65,6 +79,23 @@ class AppearanceModel(nn.Module):
         model is scored on one canonical appearance instead of fitting the
         held-out image's own exposure."""
         matrix, bias = self._transform(self.embed.weight.mean(dim=0))
+        return rgb @ matrix.T + bias
+
+    def canonical_for(self, rgb: torch.Tensor, indices) -> torch.Tensor:
+        """Apply the mean appearance of a SUBSET of training images.
+
+        Used to score a held-out view under the appearance of *its own source
+        clip* rather than a global average across clips. This leaks nothing: it
+        uses the view's clip identity (metadata known a priori) and that clip's
+        TRAINING images, never the held-out image's own pixels. Averaging across
+        clips instead penalises every view when the clips genuinely differ, which
+        is a measurement artefact rather than a property of the reconstruction.
+        """
+        if indices is None or len(indices) == 0:
+            return self.canonical(rgb)
+        idx = torch.as_tensor(list(indices), device=self.embed.weight.device,
+                              dtype=torch.long)
+        matrix, bias = self._transform(self.embed.weight[idx].mean(dim=0))
         return rgb @ matrix.T + bias
 
     @torch.no_grad()

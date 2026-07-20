@@ -12,7 +12,7 @@ Everything below is driven by two config files; no code edits are needed.
 | **A3 regularized** | `pavillon_orbit_reg.yaml` | 22.3 / 0.796 / 0.290 | **1.22 M** | 20.2 % | **301 MB** |
 | A3 ablation (depth off) | `pavillon_orbit_reg_nodepth.yaml` | 22.6 / 0.798 / 0.294 | 1.23 M | 18.0 % | 306 MB |
 | **High-detail** (2560px, 282 imgs) | `pavillon_orbit_hidetail.yaml` | 23.1 / **0.846** / 0.310 | 1.24 M | 18.0 % | 309 MB |
-| Multi-clip + appearance | `pavillon_multiclip.yaml` | 19.0 / 0.824 / 0.362 | 1.23 M | 18.9 % | 304 MB |
+| Multi-clip + appearance | `pavillon_multiclip.yaml` | 22.0 / 0.833 / 0.342 | 1.23 M | 18.9 % | 304 MB |
 
 > **The high-detail row is NOT directly comparable to the rows above it.** It is a
 > different dataset (its own `object_name` → its own COLMAP, splits and test views:
@@ -27,14 +27,21 @@ Everything below is driven by two config files; no code edits are needed.
 > | best view | 26.5 | **31.9** |
 > | catastrophic views (<18 dB) | 3/18 (17 %) | 3/28 (**11 %**) |
 >
-> **Multi-clip is a negative result — the recommended model is `pavillon_orbit_hidetail`.**
-> Merging IMG_9649 via appearance embeddings reconstructs a *worse* model despite
-> flawless SfM (332/332 registered, 0.921 px, 266 train views) and a confirmed
-> non-zero `appearance_drift`. Roughly 1.7 dB of the loss is an evaluation artifact
-> (scoring against the mean training latent, which matches neither clip), but ~3.7 dB
-> is genuine geometric degradation: the second clip adds only 48 training views while
-> enlarging the reconstructed volume, spreading the same Gaussian budget thinner.
-> Extra views help only when they re-observe the SAME surfaces from new angles.
+> **Multi-clip underperforms — `pavillon_orbit_hidetail` is still recommended — but
+> most of the apparent gap was a measurement bug.** `evaluate` used to render without
+> restoring the appearance model, scoring views on the uncorrected output while
+> training optimised corrected ones. Fixing that (per-clip appearance, see
+> `AppearanceModel.canonical_for`) moved multi-clip from 19.0 to **22.0 PSNR**,
+> cutting the gap from 4.06 dB to **1.05 dB**. **If you evaluate a run trained with
+> `appearance_embedding`, make sure this correction is applied — otherwise the model
+> is scored unfairly.**
+>
+> A modest regression does remain (median 24.48 → 22.82; catastrophic views 11 % →
+> 24 %). The per-clip split localises it: the *added* clip's views score fine
+> (img_9649 mean 23.68) while the *original* clip's degrade (img_9647 21.81) — the
+> 1.5 M Gaussian budget now covers a larger volume. The untested fix is to raise
+> `densification.cap_max` with the volume; the failure is budget dilution, not
+> appearance and not SfM.
 >
 > SfM also improved outright: **282/282 images registered (100 %)** with **152 792**
 > sparse points, versus 181/193 (94 %) and 80 913 at 1600px.

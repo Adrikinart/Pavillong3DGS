@@ -56,6 +56,31 @@ class EvaluateStage(Stage):
         step = load_checkpoint(ckpt, params, optimizers)
         backend = GsplatBackend()
 
+        # Restore the per-image appearance model, if the run used one. Without
+        # this the held-out views are scored against the UNCORRECTED render while
+        # training optimised corrected ones — a systematic photometric penalty
+        # that has nothing to do with reconstruction quality. Each view is scored
+        # under the mean appearance of its OWN source clip (metadata + that clip's
+        # training images only; the held-out pixels are never used).
+        app_model, clip_to_train_idx = None, {}
+        if ctx.config.train.appearance_embedding:
+            from ..training.appearance import AppearanceModel, clip_key
+            try:
+                state = torch.load(ckpt, map_location="cpu", weights_only=False)
+                sd = (state.get("extra") or {}).get("appearance")
+                if sd:
+                    app_model = AppearanceModel(sd["embed.weight"].shape[0],
+                                                dim=sd["embed.weight"].shape[1]).to(device)
+                    app_model.load_state_dict(sd)
+                    app_model.eval()
+                    for j, s in enumerate(train_ds.samples):
+                        clip_to_train_idx.setdefault(clip_key(s.name), []).append(j)
+                    ctx.logger.info("appearance model restored (%d latents, clips: %s)",
+                                    sd["embed.weight"].shape[0],
+                                    ", ".join(sorted(clip_to_train_idx)))
+            except Exception as e:  # noqa: BLE001
+                ctx.logger.warning("could not restore appearance model: %s", e)
+
         near = 0.01
         if ctx.layout.normalize_transform.exists():
             d = json.loads(ctx.layout.normalize_transform.read_text())
@@ -77,7 +102,12 @@ class EvaluateStage(Stage):
                 vm, K, w, h = ds.camera_tensors(i, device)
                 r, _, _ = backend._rasterize(gsplat, params, vm, K, w, h,
                                              ctx.config.train.sh_degree, near, 1e10)
-                return r[0]
+                r = r[0]
+                if app_model is not None:
+                    from ..training.appearance import clip_key
+                    r = app_model.canonical_for(
+                        r, clip_to_train_idx.get(clip_key(ds.samples[i].name)))
+                return r
 
             res = evaluate_split(render_fn, ds, device,
                                  out_dir=ctx.layout.renders_dir(tr) / f"eval_{split}",

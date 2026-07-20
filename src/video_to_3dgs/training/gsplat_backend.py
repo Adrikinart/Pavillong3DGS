@@ -112,12 +112,17 @@ class GsplatBackend(TrainingBackend):
         # Kept OUT of `optimizers`, which the densification strategy owns and
         # indexes per-Gaussian — these parameters are per-IMAGE, not per-Gaussian.
         app_model = app_opt = None
+        clip_to_train_idx: dict[str, list[int]] = {}
+        clip_key = None
         if cfg.appearance_embedding:
-            from .appearance import AppearanceModel
+            from .appearance import AppearanceModel, clip_key
             app_model = AppearanceModel(len(train_ds), dim=cfg.appearance_dim).to(device)
             app_opt = torch.optim.Adam(app_model.parameters(), lr=cfg.appearance_lr)
-            log.info("appearance embeddings ON: %d images x %d dims",
-                     len(train_ds), cfg.appearance_dim)
+            for j, s in enumerate(train_ds.samples):
+                clip_to_train_idx.setdefault(clip_key(s.name), []).append(j)
+            log.info("appearance embeddings ON: %d images x %d dims across %d clip(s): %s",
+                     len(train_ds), cfg.appearance_dim, len(clip_to_train_idx),
+                     ", ".join(f"{k}({len(v)})" for k, v in sorted(clip_to_train_idx.items())))
 
         # densification strategy
         dcfg = cfg.densification
@@ -318,9 +323,14 @@ class GsplatBackend(TrainingBackend):
                 def _val_render(i, _step=step):
                     r = self._rasterize(gsplat, params, *val_ds.camera_tensors(i, device),
                                         min(cfg.sh_degree, _step // 1000), near, far)[0][0]
-                    # score against ONE canonical appearance; fitting a held-out
-                    # image's own exposure would leak test information
-                    return app_model.canonical(r) if app_model is not None else r
+                    if app_model is None:
+                        return r
+                    # score under the mean appearance of the view's OWN source clip
+                    # (clip identity + that clip's TRAINING images only — the
+                    # held-out pixels are never used, so nothing leaks). Averaging
+                    # across clips penalises every view once the clips differ.
+                    return app_model.canonical_for(
+                        r, clip_to_train_idx.get(clip_key(val_ds.samples[i].name)))
 
                 vres = evaluate_split(
                     _val_render,

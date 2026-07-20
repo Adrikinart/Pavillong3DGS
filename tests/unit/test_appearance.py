@@ -74,3 +74,40 @@ def test_state_round_trips_for_resume():
     b.load_state_dict(a.state_dict())
     rgb = _render()
     assert torch.allclose(a(2, rgb), b(2, rgb), atol=1e-6)
+
+
+def test_clip_key_groups_frames_by_source_video():
+    from video_to_3dgs.training.appearance import clip_key
+    assert clip_key("img_9647_000008.jpg") == "img_9647"
+    assert clip_key("img_9649_000145.jpg") == "img_9649"
+    # frames from the same clip collapse to one key, different clips do not
+    same = {clip_key(f"img_9647_{i:06d}.jpg") for i in range(5)}
+    assert same == {"img_9647"}
+    assert clip_key("img_9647_000001.jpg") != clip_key("img_9649_000001.jpg")
+
+
+def test_canonical_for_uses_only_the_named_subset():
+    """Per-clip scoring must depend on that clip's latents and nothing else."""
+    m = AppearanceModel(n_images=6, dim=8)
+    with torch.no_grad():                       # clip A = 0..2, clip B = 3..5
+        m.embed.weight[:3] = 1.0
+        m.embed.weight[3:] = -1.0
+        for p in m.mlp[-1].parameters():
+            p.add_(torch.randn_like(p) * 0.1)
+    rgb = _render()
+    a, b = m.canonical_for(rgb, [0, 1, 2]), m.canonical_for(rgb, [3, 4, 5])
+    assert not torch.allclose(a, b), "different clips must get different corrections"
+    # changing clip B's latents must not affect clip A's correction
+    with torch.no_grad():
+        m.embed.weight[3:] = -5.0
+    assert torch.allclose(m.canonical_for(rgb, [0, 1, 2]), a, atol=1e-6)
+
+
+def test_canonical_for_falls_back_to_global_mean():
+    m = AppearanceModel(n_images=4, dim=8)
+    with torch.no_grad():
+        for p in m.mlp[-1].parameters():
+            p.add_(torch.randn_like(p) * 0.1)
+    rgb = _render()
+    assert torch.allclose(m.canonical_for(rgb, None), m.canonical(rgb), atol=1e-6)
+    assert torch.allclose(m.canonical_for(rgb, []), m.canonical(rgb), atol=1e-6)
