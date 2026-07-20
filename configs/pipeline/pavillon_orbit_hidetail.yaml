@@ -77,7 +77,9 @@ train:
     grad_threshold: 0.0003
     opacity_reset_interval: 3000
     prune_opacity: 0.005
-    cap_max: 2000000           # more views + more pixels support more Gaussians
+    # Kept at the A3 run's value so resolution/frame-count/min_opacity are the only
+    # changed variables (clean comparison), and so the run fits a 16 GB card.
+    cap_max: 1500000
   bounds:
     enabled: true
     margin: 0.5

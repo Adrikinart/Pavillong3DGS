@@ -23,8 +23,34 @@ def _load_gray(path: Path):
     return img
 
 
+# blur_var_min thresholds in the shipped configs were calibrated on frames
+# extracted at a 1600px long edge; measuring at this fixed scale keeps them valid
+# for any extract_frames.resize_long_edge.
+_BLUR_REF_LONG_EDGE = 1600
+
+
 def _blur_var(gray) -> float:
+    """Variance of the Laplacian, measured at a FIXED reference scale.
+
+    Laplacian variance is resolution-dependent: the same content at a higher
+    resolution spreads each edge over more pixels, so per-pixel second derivatives
+    shrink and the variance drops. A ``blur_var_min`` tuned at one extraction
+    resolution therefore silently mis-filters at another — extracting the Pavillon
+    clip at 2560px instead of 1600px pushed the median from ~90 to 36 and rejected
+    308/400 frames as "blurry", starving COLMAP of coverage.
+
+    Downscaling to a reference long edge makes the score comparable across
+    resolutions. Frames already smaller than the reference are left alone (upsampling
+    would only add interpolation blur).
+    """
     import cv2
+
+    h, w = gray.shape[:2]
+    long_edge = max(h, w)
+    if long_edge > _BLUR_REF_LONG_EDGE:
+        s = _BLUR_REF_LONG_EDGE / float(long_edge)
+        gray = cv2.resize(gray, (max(1, int(round(w * s))), max(1, int(round(h * s)))),
+                          interpolation=cv2.INTER_AREA)
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
