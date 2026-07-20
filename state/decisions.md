@@ -136,6 +136,27 @@ cameras collapses to a tight, clean cluster. Takeaway: for room captures like th
 the scale+opacity floater prune does the work; the room AABB matters more for
 captures where Gaussians actually escape to infinity.
 
+## Resolution/coverage beats regularizer tuning (high-detail run)
+Per-view analysis of the A3 model showed every catastrophic held-out view
+(12.7-18.8 dB) was an EXTREME CLOSE-UP at a grazing angle, while medium-distance
+views scored 25.6-26.5 — a spatial-frequency deficit. The pipeline was also
+downscaling a 3840x2160 source to 1600px and using ~181 of ~5900 frames.
+`pavillon_orbit_hidetail.yaml` raises this to 2560px / 400 sampled frames.
+
+Result: SfM improves outright — **282/282 registered (100%) and 152 792 sparse
+points**, vs 181/193 (94%) and 80 913. On its (larger, higher-res, harder) test
+split the model reaches median PSNR **24.48** and SSIM **0.846** vs the A3 model's
+23.43 / 0.796, best view 31.9 vs 26.5, and catastrophic views drop 17% -> 11%.
+Cross-resolution PSNR/LPIPS are NOT comparable, so judge this on distribution.
+
+**Remaining limitation is coverage, not resolution.** The views that still fail are
+near-featureless wood plank at grazing angles filling the frame: low texture AND
+minimal parallax with any other view. More pixels cannot fix a patch only one
+camera saw well. The next real lever is more viewpoints — i.e. appearance
+embeddings so all three Pavillon clips can be merged (~3x coverage), and/or pose
+optimization. Both are currently **dead schema flags** (`train.appearance_embedding`,
+`train.pose_optimization`) that are declared but never implemented.
+
 Env note: `transformers` (depth pipeline) was pip-installed into `v2gs` on top of
 the lockfile; add it to the env provisioning if the depth prior becomes standard.
 GPU nodes: only the Blackwell nodes (GPURACK4/5) run this cu128 env — the 3090/4090

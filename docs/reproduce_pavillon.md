@@ -11,6 +11,23 @@ Everything below is driven by two config files; no code edits are needed.
 | Baseline (GLOMAP + 3DGS) | `pavillon_orbit_hq.yaml` | **23.9** / 0.825 / 0.245 | 1.53 M | — | 374 MB |
 | **A3 regularized** | `pavillon_orbit_reg.yaml` | 22.3 / 0.796 / 0.290 | **1.22 M** | 20.2 % | **301 MB** |
 | A3 ablation (depth off) | `pavillon_orbit_reg_nodepth.yaml` | 22.6 / 0.798 / 0.294 | 1.23 M | 18.0 % | 306 MB |
+| **High-detail** (2560px, 282 imgs) | `pavillon_orbit_hidetail.yaml` | 23.1 / **0.846** / 0.310 | 1.24 M | 18.0 % | 309 MB |
+
+> **The high-detail row is NOT directly comparable to the rows above it.** It is a
+> different dataset (its own `object_name` → its own COLMAP, splits and test views:
+> **28 test views at 2560px** vs 18 at 1600px). Cross-resolution PSNR/LPIPS
+> comparisons are unreliable. Compare it against the A3 model on *distribution*
+> instead, where it wins on the harder split:
+>
+> | | A3 @1600px (18 views) | High-detail @2560px (28 views) |
+> |---|---|---|
+> | median PSNR | 23.43 | **24.48** |
+> | mean SSIM | 0.796 | **0.846** |
+> | best view | 26.5 | **31.9** |
+> | catastrophic views (<18 dB) | 3/18 (17 %) | 3/28 (**11 %**) |
+>
+> SfM also improved outright: **282/282 images registered (100 %)** with **152 792**
+> sparse points, versus 181/193 (94 %) and 80 913 at 1600px.
 
 The A3 model trades ~1.4 dB PSNR for markedly cleaner geometry: **18.2 % → 0 %**
 near-transparent "haze" Gaussians, max Gaussian scale **1.00 → 0.16**, median
