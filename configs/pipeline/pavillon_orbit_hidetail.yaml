@@ -1,0 +1,103 @@
+# High-detail Pavillon reconstruction.
+#
+# Motivated by a measured failure mode: on the A3 model the worst held-out views
+# (PSNR 12.7-18.8) are all EXTREME CLOSE-UPS at grazing angles filling the frame
+# with plank + carved molding, while medium-distance contextual views score
+# 25.6-26.5. That is a spatial-frequency deficit, not a floater problem - those
+# close-ups need detail finer than a 1600px training resolution can represent,
+# and the source video is 3840x2160.
+#
+# Three changes vs pavillon_orbit_reg.yaml:
+#   1. resize_long_edge 1600 -> 2560   (recover the discarded relief detail)
+#   2. target_fps 2 -> 4, max_frames 260 -> 400
+#      (the capture's root limit is low overlap/parallax; we were using ~181 of
+#       ~5900 available frames. COLMAP took only 80s at 181 imgs, so denser
+#       sampling is affordable.)
+#   3. floater.min_opacity 0.02 -> 0.005
+#      (the depth-off ablation proved the final hard prune - not the depth prior -
+#       costs ~1.4 dB; 0.005 is the densifier's own threshold, so it keeps most of
+#       the floater cleanup far more cheaply.)
+#
+# Own object_name => own dataset dir, so the existing pavillon_orbit run and its
+# frozen config stay untouched.
+object_name: pavillon_hidetail
+capture_mode: orbit
+profile:
+  name: rtxpro
+  nodelist: GPURACK2
+videos:
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/Pavillon/IMG_9647.MOV
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 4.0
+  max_frames: 400
+  min_frames: 60
+  resize_long_edge: 2560       # source is 3840x2160; keep the fine carving
+
+filter_frames:
+  enabled: true
+  blur_var_min: 50.0
+
+generate_masks:
+  enabled: false
+
+run_colmap:
+  matcher: exhaustive
+  mapper_backend: glomap       # 181/193 vs 82 for incremental COLMAP on this capture
+  camera_model: OPENCV
+  single_camera: true
+  sequential_overlap: 15
+
+validate_colmap:
+  minimum_registration_ratio: 0.60
+  hard_fail: false
+
+normalize_scene:
+  method: points
+
+split_dataset:
+  strategy: pose_aware
+
+train:
+  backend: gsplat
+  train_run_id: gsplat_hidetail_30k
+  max_iterations: 30000
+  sh_degree: 3
+  use_masks: false
+  antialiasing: true
+  checkpoint_interval: 5000
+  validation_interval: 1000
+  val_render_count: 4
+  densification:
+    strategy: default
+    start_iteration: 500
+    stop_iteration: 15000
+    interval: 100
+    grad_threshold: 0.0003
+    opacity_reset_interval: 3000
+    prune_opacity: 0.005
+    cap_max: 2000000           # more views + more pixels support more Gaussians
+  bounds:
+    enabled: true
+    margin: 0.5
+    prune_every: 500
+  floater:
+    enabled: true
+    max_scale_frac: 0.15
+    min_opacity: 0.005         # was 0.02 — the measured PSNR cost
+    prune_every: 500
+  depth_prior:
+    enabled: true              # ~free in PSNR and it increases floater removal
+    model: depth-anything/Depth-Anything-V2-Small-hf
+    lambda_depth: 0.1
+    start_iter: 2000
+    loss: pearson
+
+report:
+  enabled: true
+  figures: [training_curves, qualitative, gaussian_stats, per_view, gaussian_centers]
+  videos: [orbit, progression]
+  orbit_frames: 150
+  orbit_elevation_deg: 15.0
+  video_fps: 30
