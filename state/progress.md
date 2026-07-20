@@ -72,10 +72,13 @@ Reg run `gsplat_reg_30k` (same GLOMAP as baseline, controlled comparison):
 - **20.2% floaters removed** by room-bounds + anti-floater hard prune (1.52M→1.22M
   Gaussians), `.ply` 374→**301 MB**, renders stay sharp.
 - Test PSNR **22.3 / SSIM 0.80 / LPIPS 0.29** (best val 24.5) vs baseline 23.9 /
-  0.82 / 0.245 — the ~1.5 dB drop is the depth prior trading photometric for
-  geometric consistency; bounds+floater removal is nearly free. Details in
-  decisions.md. Deliverables: exports/gsplat_reg_30k/point_cloud.ply + orbit/
+  0.82 / 0.245. Deliverables: exports/gsplat_reg_30k/point_cloud.ply + orbit/
   progression videos + 5 figures + report + eval.
+- **Ablation `gsplat_reg_nodepth`** (bounds+floater, depth OFF): test **22.55 /
+  0.798 / 0.294**, 18.0% pruned, best val 24.45. Depth-off recovers only 0.26 dB,
+  so the ~1.4 dB gap to baseline is the **final hard prune** (`min_opacity 0.02`
+  drops faint Gaussians that still serve held-out views) — NOT the depth prior.
+  Tune `floater.min_opacity` to trade cleanliness vs PSNR. See decisions.md.
 - Depth prior needs `transformers` (pip-installed into v2gs; model cached on NFS).
 
 ## Cluster/ops note (2026-07-16)

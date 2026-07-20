@@ -107,13 +107,22 @@ aimed at a failure mode of this single-side, low-overlap, in-a-room capture:
 **Result (reg run vs the same-COLMAP baseline — a controlled comparison):**
 final hard prune removed **20.2% of Gaussians (1.52M → 1.22M)**, `.ply` 374→**301
 MB**, renders stay sharp (relief preserved). Test PSNR **22.3 / SSIM 0.80 / LPIPS
-0.29** vs baseline 23.9 / 0.82 / 0.245; best **val** PSNR 24.5 (on par). The
-~1.5 dB test drop is the **depth prior** trading photometric fit for geometric
-consistency — the bounds+floater removal itself is nearly free. Net: the user's
-two asks (keep Gaussians in the room; kill flying floaters) are delivered with a
-cleaner, smaller model at a modest photometric cost. A **bounds+floater-only
-(depth off)** variant is the lever to recover PSNR while keeping the floater
-cleanup, if raw PSNR is preferred over geometric regularization.
+0.29** vs baseline 23.9 / 0.82 / 0.245; best **val** PSNR 24.5 (on par).
+
+**Ablation settles what costs the PSNR (this corrects an earlier wrong guess).**
+A depth-OFF run (`gsplat_reg_nodepth`, bounds+floater only, identical otherwise)
+gives test **22.55 / 0.798 / 0.294**, prunes 18.0%, best val 24.45. So turning the
+depth prior off recovers only **0.26 dB** — it is *not* the source of the ~1.4 dB
+gap to baseline. The cost is the **final hard prune** itself: `min_opacity: 0.02`
+removes faint Gaussians that still contribute to held-out views. Both regularized
+runs land at ~22.3–22.6 regardless of the depth prior.
+
+Practical consequence: the PSNR/cleanliness trade-off is tuned via
+`floater.min_opacity`, not by disabling the depth prior. Lower it (0.02 → 0.005,
+the densifier's own prune threshold) to keep most of the floater cleanup at a
+smaller photometric cost; raise it for a leaner, cleaner `.ply`. The depth prior
+is nearly free in PSNR terms and slightly *increases* floater removal (20.2% vs
+18.0%), so it earns its place.
 
 **Where the 20% actually came from (CPU analysis of both `.ply`s):** the room box
 barely triggered — only ~0.01% of *baseline* Gaussians sit outside the (generous)

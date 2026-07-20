@@ -6,15 +6,26 @@ reconstruction from the raw video, including the **A3 geometry regularizers**
 
 Everything below is driven by two config files; no code edits are needed.
 
-| Model | Config | Test PSNR / SSIM / LPIPS | Gaussians | `.ply` |
-|---|---|---|---|---|
-| Baseline (GLOMAP + 3DGS) | `configs/pipeline/pavillon_orbit_hq.yaml` | 23.9 / 0.825 / 0.245 | ~1.53 M | 374 MB |
-| **A3 regularized** | `configs/pipeline/pavillon_orbit_reg.yaml` | 22.3 / 0.796 / 0.290 | **1.22 M** | **301 MB** |
-| A3 ablation (no depth prior) | `configs/pipeline/pavillon_orbit_reg_nodepth.yaml` | see `experiments/registry.csv` | — | — |
+| Model | Config | Test PSNR / SSIM / LPIPS | Gaussians | Pruned | `.ply` |
+|---|---|---|---|---|---|
+| Baseline (GLOMAP + 3DGS) | `pavillon_orbit_hq.yaml` | **23.9** / 0.825 / 0.245 | 1.53 M | — | 374 MB |
+| **A3 regularized** | `pavillon_orbit_reg.yaml` | 22.3 / 0.796 / 0.290 | **1.22 M** | 20.2 % | **301 MB** |
+| A3 ablation (depth off) | `pavillon_orbit_reg_nodepth.yaml` | 22.6 / 0.798 / 0.294 | 1.23 M | 18.0 % | 306 MB |
 
-The A3 model trades ~1.5 dB PSNR for markedly cleaner geometry: **18.2 % → 0 %**
+The A3 model trades ~1.4 dB PSNR for markedly cleaner geometry: **18.2 % → 0 %**
 near-transparent "haze" Gaussians, max Gaussian scale **1.00 → 0.16**, median
 opacity **0.51 → 0.88**. See [Step 6](#6-verify-the-floater-reduction).
+
+**Where that PSNR actually goes (measured, not assumed).** The depth-off ablation
+recovers only **0.26 dB**, so the depth prior is *not* the cost — the **final hard
+prune** is. `floater.min_opacity: 0.02` removes faint Gaussians that still
+contribute to held-out views. Validation PSNR is ~24.5 for both regularized runs,
+on par with the baseline; the gap appears only on the held-out test split.
+
+> **Tuning knob:** to keep most of the floater cleanup at a smaller photometric
+> cost, lower `floater.min_opacity` toward `0.005` (the densifier's own prune
+> threshold). Raise it for a leaner, cleaner `.ply`. Do **not** disable the depth
+> prior for PSNR — it is nearly free and slightly *increases* floater removal.
 
 ---
 
