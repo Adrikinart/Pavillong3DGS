@@ -11,9 +11,14 @@ def test_resolve_explicit_existing_path():
     assert resolve_colmap_bin("/bin/sh") == "/bin/sh"
 
 
-def test_resolve_raises_when_absent(monkeypatch):
-    # ensure 'colmap' is not found on PATH nor in sys.prefix/bin
+def test_resolve_raises_when_absent(monkeypatch, tmp_path):
+    # ensure 'colmap' is found neither on PATH nor in <sys.prefix>/bin. The env
+    # this suite runs in (v2gs) DOES ship colmap in sys.prefix/bin, so the prefix
+    # must be redirected too or the resolver legitimately finds it.
+    import sys
+
     monkeypatch.setenv("PATH", "/nonexistent-dir-xyz")
+    monkeypatch.setattr(sys, "prefix", str(tmp_path))
     with pytest.raises(InputValidationError):
         resolve_colmap_bin("colmap")
 

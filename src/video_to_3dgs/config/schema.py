@@ -154,8 +154,35 @@ class DensifyCfg(_Base):
     cap_max: int = 1_000_000            # ceiling on #gaussians (health)
 
 
+class BoundsCfg(_Base):
+    """Constrain Gaussians to the captured room volume (AABB of cameras+points)."""
+    enabled: bool = True
+    margin: float = 0.5          # fraction of the scene extent added beyond the box
+    prune_every: int = 500       # suppress out-of-room Gaussians this often
+
+
+class FloaterCfg(_Base):
+    """Suppress 'flying' Gaussians (large, faint, or in empty space)."""
+    enabled: bool = True
+    max_scale_frac: float = 0.15  # prune Gaussians larger than this * scene extent
+    min_opacity: float = 0.02     # hard-prune below this opacity at the end
+    prune_every: int = 500
+
+
+class DepthPriorCfg(_Base):
+    """Monocular-depth regularization (sparse-view geometry prior)."""
+    enabled: bool = False
+    model: str = "depth-anything/Depth-Anything-V2-Small-hf"
+    lambda_depth: float = 0.1
+    start_iter: int = 500
+    loss: Literal["pearson", "l1_affine"] = "pearson"
+
+
 class TrainCfg(_Base):
     backend: Literal["gsplat", "2dgs", "splatfacto", "orig_3dgs"] = "gsplat"
+    bounds: "BoundsCfg" = Field(default_factory=lambda: BoundsCfg())
+    floater: "FloaterCfg" = Field(default_factory=lambda: FloaterCfg())
+    depth_prior: "DepthPriorCfg" = Field(default_factory=lambda: DepthPriorCfg())
     train_run_id: Optional[str] = None  # auto if None
     seed: int = 42
     max_iterations: int = 30000

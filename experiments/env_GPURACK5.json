@@ -1,0 +1,163 @@
+{
+  "shell": {
+    "hostname": "GPURACK5",
+    "uname": "Linux-6.8.0-106-generic-x86_64-with-glibc2.35",
+    "python": "3.11.15",
+    "which_python": "/home/AdrienK/envs/v2gs/bin/python",
+    "cwd": "/home/AdrienK/my3DGS",
+    "nvidia_smi": {
+      "cmd": "nvidia-smi --query-gpu=name,driver_version,memory.total,compute_cap --format=csv,noheader",
+      "rc": 0,
+      "stdout": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, 595.71.05, 97887 MiB, 12.0",
+      "stderr": ""
+    },
+    "nvidia_smi_L": {
+      "cmd": "nvidia-smi -L",
+      "rc": 0,
+      "stdout": "GPU 0: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition (UUID: GPU-fc497d43-7d7f-0356-7ecb-17e4d2a87550)",
+      "stderr": ""
+    },
+    "nvcc": {
+      "cmd": "nvcc --version",
+      "rc": 0,
+      "stdout": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2025 NVIDIA Corporation\nBuilt on Fri_Feb_21_20:23:50_PST_2025\nCuda compilation tools, release 12.8, V12.8.93\nBuild cuda_12.8.r12.8/compiler.35583870_0",
+      "stderr": ""
+    },
+    "conda": {
+      "cmd": "conda --version",
+      "rc": 0,
+      "stdout": "conda 25.11.1",
+      "stderr": ""
+    },
+    "ffmpeg": {
+      "cmd": "ffmpeg -version",
+      "rc": 0,
+      "stdout": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers\nbuilt with gcc 14.3.0 (conda-forge gcc 14.3.0-19)\nconfiguration: --prefix=/home/AdrienK/envs/v2gs --cc=/home/conda/feedstock_root/build_artifacts/ffmpeg_1784109079113/_build_env/bin/x86_64-conda-linux-gnu-cc --cxx=/home/conda/feedstock_root/build_artifacts/ffmpeg_1784109079113/_build_env/bin/x86_64-conda-linux-gnu-c++ --nm=x86_64-conda-linux-gnu-nm --ar=x86_64-conda-linux-gnu-ar --disable-doc --enable-openssl --enable-demuxer=dash --enable-hardcoded-tables --enable-libfreetype --enable-libharfbuzz --enable-libfontconfig --enable-libopenh264 --enable-libdav1d --disable-gnutls --enable-libvpx --enable-libass --enable-libplacebo --enable-pthreads --enable-alsa --enable-libpulse --enable-libvpl --enable-vaapi --enable-libopenvino --enable-gpl --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libaom --enable-libsvtav1 --enable-libxml2 --enable-pic --enable-shared --disable-static --enable-version3 --enable-zlib --enable-libvorbis --enable-libopus --enable-librsvg --enable-libjxl --enable-libwebp --enable-ffplay --enable-vulkan --enable-libshaderc --pkg-config=/home/conda/feedstock_root/build_artifacts/ffmpeg_1784109079113/_build_env/bin/pkg-config\nlibavutil      60. 26.102 / 60. 26.102\nlibavcodec     62. 28.102 / 62. 28.102\nlibavformat    62. 12.102 / 62. 12.102\nlibavdevice    62.  3.102 / 62.  3.102\nlibavfilter    11. 14.102 / 11. 14.102\nlibswscale      9.  5.102 /  9.  5.102\nlibswresample   6.  3.102 /  6.  3.102\n\nExiting with exit code 0",
+      "stderr": ""
+    },
+    "colmap": {
+      "cmd": "colmap -h",
+      "rc": 0,
+      "stdout": "COLMAP 3.13.0 -- Structure-from-Motion and Multi-View Stereo\n(Commit Unknown on Unknown with CUDA)\n\nUsage:\n  colmap [command] [options]\nDocumentation:\n  https://colmap.github.io/\nExample usage:\n  colmap help [ -h, --help ]\n  colmap gui\n  colmap gui -h [ --help ]\n  colmap automatic_reconstructor -h [ --help ]\n  colmap automatic_reconstructor --image_path IMAGES --workspace_path WORKSPACE\n  colmap feature_extractor --image_path IMAGES --database_path DATABASE\n  colmap exhaustive_matcher --database_path DATABASE\n  colmap mapper --image_path IMAGES --database_path DATABASE --output_path MODEL\n  ...\nAvailable commands:\n  help\n  gui\n  automatic_reconstructor\n  bundle_adjuster\n  color_extractor\n  database_cleaner\n  database_creator\n  database_merger\n  delaunay_mesher\n  exhaustive_matcher\n  feature_extractor\n  feature_importer\n  geometric_verifier\n  hierarchical_mapper\n  image_deleter\n  image_filterer\n  image_rectifier\n  image_registrator\n  image_undistorter\n  image_undistorter_standalone\n  mapper\n  matches_importer\n  model_aligner\n  model_analyzer\n  model_comparer\n  model_converter\n  model_cropper\n  model_merger\n  model_orientation_aligner\n  model_splitter\n  model_transformer\n  patch_match_stereo\n  point_filtering\n  point_triangulator\n  pose_prior_mapper\n  poisson_mesher\n  project_generator\n  rig_configurator\n  sequential_matcher\n  spatial_matcher\n  stereo_fusion\n  transitive_matcher\n  vocab_tree_builder\n  vocab_tree_matcher\n  vocab_tree_retriever",
+      "stderr": ""
+    },
+    "sinfo": {
+      "cmd": "sinfo -s",
+      "rc": 0,
+      "stdout": "PARTITION AVAIL  TIMELIMIT   NODES(A/I/O/T) NODELIST\nrtx30        up 3-00:00:00          0/0/1/1 GPURACK1\nrtx40        up 3-00:00:00          1/0/0/1 GPURACK3\nrtx50        up 3-00:00:00          1/0/0/1 GPURACK4\nrtxpro       up 3-00:00:00          1/0/1/2 GPURACK[2,5]",
+      "stderr": ""
+    },
+    "scratch_candidates": {
+      "/tmp/tmp-1000092": true,
+      "/scratch/AdrienK": false,
+      "/local_scratch/AdrienK": false,
+      "/var/tmp/AdrienK": true
+    },
+    "relevant_env": {
+      "TORCH_EXTENSIONS_DIR": "/var/tmp/AdrienK/torch_ext",
+      "SLURM_STEP_NUM_TASKS": "1",
+      "SLURM_JOB_USER": "AdrienK",
+      "SLURM_TASKS_PER_NODE": "1",
+      "SLURM_JOB_UID": "1000092",
+      "SLURM_STEP_GPUS": "0",
+      "SLURM_CPU_BIND": "quiet,mask_cpu:0x0000000F0000000F",
+      "SLURM_TASK_PID": "304554",
+      "SLURM_LOCALID": "0",
+      "SLURM_SUBMIT_DIR": "/home/AdrienK/my3DGS",
+      "SLURM_CPU_BIND_VERBOSE": "quiet",
+      "SLURMD_NODENAME": "GPURACK5",
+      "SLURM_JOB_START_TIME": "1784138138",
+      "SLURM_STEP_NODELIST": "GPURACK5",
+      "SLURM_CLUSTER_NAME": "gpucluster",
+      "SLURM_JOB_END_TIME": "1784145339",
+      "SLURM_CPUS_ON_NODE": "8",
+      "TORCH_CUDA_ARCH_LIST": "",
+      "SLURM_UMASK": "0022",
+      "SLURM_JOB_CPUS_PER_NODE": "8",
+      "SLURM_GPUS_ON_NODE": "1",
+      "SLURM_GTIDS": "0",
+      "SLURM_JOB_PARTITION": "rtxpro",
+      "SLURM_TRES_PER_TASK": "cpu=8",
+      "SLURM_OOM_KILL_STEP": "0",
+      "SLURM_JOB_NUM_NODES": "1",
+      "SLURM_STEPID": "0",
+      "SLURM_CPU_BIND_LIST": "0x0000000F0000000F",
+      "SLURM_JOBID": "9946",
+      "SLURM_LAUNCH_NODE_IPADDR": "10.104.203.243",
+      "SLURM_CPU_BIND_TYPE": "mask_cpu:",
+      "SLURMD_DEBUG": "2",
+      "SLURM_PROCID": "0",
+      "TMPDIR": "/tmp/tmp-1000092",
+      "SLURM_CPUS_PER_TASK": "8",
+      "SLURM_NTASKS": "1",
+      "SLURM_TOPOLOGY_ADDR": "GPURACK5",
+      "SLURM_TOPOLOGY_ADDR_PATTERN": "node",
+      "CUDA_VISIBLE_DEVICES": "0",
+      "SLURM_SRUN_COMM_HOST": "10.104.203.243",
+      "SLURM_NODELIST": "GPURACK5",
+      "SLURM_SRUN_COMM_PORT": "46771",
+      "SLURM_STEP_ID": "0",
+      "SLURM_PRIO_PROCESS": "0",
+      "SLURM_NPROCS": "1",
+      "SLURM_NNODES": "1",
+      "SLURM_SUBMIT_HOST": "isiacluster",
+      "SLURM_JOB_ID": "9946",
+      "SLURM_NODEID": "0",
+      "SLURM_STEP_NUM_NODES": "1",
+      "SLURM_STEP_TASKS_PER_NODE": "1",
+      "CUDA_HOME": "/home/AdrienK/envs/v2gs",
+      "SLURM_CONF": "/var/lib/slurm/slurmd/conf-cache/slurm.conf",
+      "SLURM_JOB_NAME": "v2gs-fix2",
+      "SLURM_JOB_GROUP": "Domain Users",
+      "SLURM_STEP_LAUNCHER_PORT": "46771",
+      "SLURM_JOB_GID": "1000000",
+      "SLURM_JOB_NODELIST": "GPURACK5"
+    }
+  },
+  "torch": {
+    "torch": "2.13.0+cu130",
+    "torch_cuda_build": "13.0",
+    "cuda_available": true,
+    "arch_list": [
+      "sm_75",
+      "sm_80",
+      "sm_86",
+      "sm_90",
+      "sm_100",
+      "sm_120"
+    ],
+    "devices": [
+      {
+        "index": 0,
+        "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
+        "cc": "12.0",
+        "sm": "sm_120",
+        "total_memory": 101973491712
+      }
+    ]
+  },
+  "git": {
+    "git_sha": "c74ff5e8dd48fa777a7cbf4aca5bd2ed07c80246",
+    "git_branch": "main",
+    "git_dirty": true
+  },
+  "torch_cuda_arch_list": "12.0",
+  "arch_compatibility": [
+    {
+      "device": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
+      "sm": "sm_120",
+      "supported_by_wheel": true
+    }
+  ],
+  "cuda_smoke": {
+    "forward": true,
+    "backward": true,
+    "error": null
+  },
+  "gsplat_smoke": {
+    "import": true,
+    "rasterize": true,
+    "version": "1.5.3",
+    "error": null
+  }
+}

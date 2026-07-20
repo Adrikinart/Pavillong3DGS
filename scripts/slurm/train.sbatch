@@ -25,12 +25,17 @@ ENV_PREFIX="${V2GS_ENV_PREFIX:-/home/$USER/envs/v2gs}"
 # node-local TORCH_EXTENSIONS_DIR/scratch). Single source: scripts/_activate_env.sh
 source scripts/_activate_env.sh
 export PIP_CACHE_DIR="/var/tmp/$USER/pip_cache"; mkdir -p "$PIP_CACHE_DIR"
+# Depth-prior model (DepthAnything-v2) is pre-cached on NFS ~/.cache/huggingface;
+# force offline so a GPU node without internet uses the cache instead of hanging.
+export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 echo "[train.sbatch] host=$(hostname) job=$SLURM_JOB_ID config=$CONFIG env=$ENV_PREFIX"
 nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv,noheader || true
 echo "[train.sbatch] TORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST CUDA_HOME=$CUDA_HOME"
 
 # run-all skips already-completed preprocessing and proceeds through train/eval/export.
-srun "$ENV_PREFIX/bin/python" -m video_to_3dgs.cli run-all --config "$CONFIG" --verbose
+# Extra args after the config are forwarded (e.g. --force --from-stage train to
+# re-freeze an edited config and re-train a sibling run without re-running COLMAP).
+srun "$ENV_PREFIX/bin/python" -m video_to_3dgs.cli run-all --config "$CONFIG" --verbose "${@:2}"
 rc=$?
 echo "[train.sbatch] run-all exit=$rc"
 exit $rc

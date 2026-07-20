@@ -40,6 +40,11 @@ experiments/runs/
 *.jpeg
 !tests/fixtures/**
 
+# Slurm per-job logs (transient; regenerated every submission)
+experiments/slurm_logs/
+# registry rotation backups (the live experiments/registry.csv IS tracked)
+*.csv.bak
+
 # TensorBoard / logs / metrics dumps
 **/tb/
 **/tensorboard/

@@ -61,4 +61,30 @@ reconstruction on 145 train views: test PSNR 23.0 / SSIM 0.81 / LPIPS 0.27
 GLOMAP could register). Also fixed 3 resume-safety bugs surfaced by the re-run
 (stale-checkpoint provenance, empty-loop guard). Deliverables regenerated:
 exports/gsplat_run/point_cloud.ply + framed orbit/progression videos + figures.
-Next (on hold for go-ahead): A2 2DGS/SuGaR surface mesh, A3 depth/normal priors.
+
+## SOTA A2 — 2DGS surface backend (done; dead-end on THIS capture)
+Implemented + GPU-validated; produces flat renders (PSNR ~13) on this single-side
+low-overlap panel. Kept as an experimental backend. See decisions.md.
+
+## SOTA A3 — geometry regularizers (done) — room bounds + anti-floater + depth prior
+Config `pavillon_orbit_reg.yaml`, trainer knobs `train.{bounds,floater,depth_prior}`.
+Reg run `gsplat_reg_30k` (same GLOMAP as baseline, controlled comparison):
+- **20.2% floaters removed** by room-bounds + anti-floater hard prune (1.52M→1.22M
+  Gaussians), `.ply` 374→**301 MB**, renders stay sharp.
+- Test PSNR **22.3 / SSIM 0.80 / LPIPS 0.29** (best val 24.5) vs baseline 23.9 /
+  0.82 / 0.245 — the ~1.5 dB drop is the depth prior trading photometric for
+  geometric consistency; bounds+floater removal is nearly free. Details in
+  decisions.md. Deliverables: exports/gsplat_reg_30k/point_cloud.ply + orbit/
+  progression videos + 5 figures + report + eval.
+- Depth prior needs `transformers` (pip-installed into v2gs; model cached on NFS).
+
+## Cluster/ops note (2026-07-16)
+GPURACK5 (RTX PRO 6000) went **down** mid-visualize; the reg pipeline had already
+completed (train/eval/export/visualize) so nothing was lost.
+**Node driver constraint (important):** the `v2gs` env (torch **cu128**) only runs
+on nodes with a new-enough driver. GPURACK1 (3090) and GPURACK3 (4090) have an old
+driver (CUDA **12.0** / reported 12080) → torch aborts with "driver too old"; jobs
+there fail with `CUDA not available`. **Only the Blackwell nodes GPURACK5 (down) and
+GPURACK4 (5080, usually full with gs-jepa) can run GPU work.** So "free CPU" nodes
+are not usable for this env — GPU experiments must wait for a Blackwell node.
+Housekeeping: removed 4 superseded run dirs (~6 GB) + accumulated debug junk.

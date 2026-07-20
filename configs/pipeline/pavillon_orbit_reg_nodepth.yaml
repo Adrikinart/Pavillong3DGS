@@ -1,0 +1,99 @@
+# ABLATION: room-bounds + anti-floater ONLY (depth prior OFF) (A3): the winning single-orbit 3DGS +
+# geometry regularizers targeted at THIS capture's failure modes.
+#
+#   1. Room bounds  - the panel was shot inside a room; Gaussians are constrained
+#      to the AABB of cameras+points (expanded), so nothing drifts to infinity.
+#   2. Anti-floater - oversized/faint 'flying' Gaussians are suppressed during
+#      training and hard-pruned at the end for a clean, floater-free .ply.
+#   3. Depth prior  - DepthAnything-v2 monocular depth + scale-invariant (Pearson)
+#      depth loss injects the geometry ordering the low-overlap views lack.
+#
+# Baseline to beat: pavillon_orbit_hq (test PSNR ~24, but with background floaters).
+#
+# Keeps object_name `pavillon_orbit` so it REUSES the existing GLOMAP
+# reconstruction (dataset pavillon_orbit_d252a0e5); only the training stage
+# re-runs, as a sibling training next to the baseline `gsplat_run`.
+object_name: pavillon_orbit
+capture_mode: orbit
+profile:
+  name: rtxpro
+  nodelist: GPURACK5
+videos:
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/Pavillon/IMG_9647.MOV
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 2.0
+  max_frames: 260
+  min_frames: 60
+  resize_long_edge: 1600
+
+filter_frames:
+  enabled: true
+  blur_var_min: 50.0
+
+generate_masks:
+  enabled: false
+
+run_colmap:
+  matcher: exhaustive
+  mapper_backend: glomap
+  camera_model: OPENCV
+  single_camera: true
+  sequential_overlap: 15
+
+validate_colmap:
+  minimum_registration_ratio: 0.60
+  hard_fail: false
+
+normalize_scene:
+  method: points
+
+split_dataset:
+  strategy: pose_aware
+
+train:
+  backend: gsplat
+  train_run_id: gsplat_reg_nodepth      # stable id: sibling of baseline gsplat_run
+  max_iterations: 30000
+  sh_degree: 3
+  use_masks: false
+  antialiasing: true
+  checkpoint_interval: 5000
+  validation_interval: 1000
+  val_render_count: 4
+  densification:
+    strategy: default
+    start_iteration: 500
+    stop_iteration: 15000
+    interval: 100
+    grad_threshold: 0.0003
+    opacity_reset_interval: 3000
+    prune_opacity: 0.005
+    cap_max: 1500000
+  # --- room bounds (keep Gaussians inside the captured room volume) ---
+  bounds:
+    enabled: true
+    margin: 0.5            # AABB(cameras+points) expanded by 50% of its extent
+    prune_every: 500
+  # --- anti-floater ('flying' Gaussian) suppression + final hard prune ---
+  floater:
+    enabled: true
+    max_scale_frac: 0.15   # kill Gaussians larger than 0.15 * scene extent
+    min_opacity: 0.02      # hard-prune below this opacity on completion
+    prune_every: 500
+  # --- monocular depth prior (sparse-view geometry signal) ---
+  depth_prior:
+    enabled: false
+    model: depth-anything/Depth-Anything-V2-Small-hf
+    lambda_depth: 0.1
+    start_iter: 2000       # let photometric settle first, then add geometry
+    loss: pearson
+
+report:
+  enabled: true
+  figures: [training_curves, qualitative, gaussian_stats, per_view, gaussian_centers]
+  videos: [orbit, progression]
+  orbit_frames: 150
+  orbit_elevation_deg: 15.0
+  video_fps: 30

@@ -52,7 +52,7 @@ class GsplatBackend(TrainingBackend):
 
     # ------------------------------------------------------------------ #
     def _rasterize(self, gsplat, params, sample_vm, K, width, height, sh_degree_now,
-                   near, far):
+                   near, far, with_depth=False):
         import torch
         means = params["means"]
         quats = params["quats"]
@@ -64,7 +64,11 @@ class GsplatBackend(TrainingBackend):
             viewmats=sample_vm[None], Ks=K[None], width=width, height=height,
             sh_degree=sh_degree_now, near_plane=near, far_plane=far,
             packed=False, rasterize_mode="antialiased",
+            render_mode="RGB+ED" if with_depth else "RGB",
         )
+        if with_depth:
+            # RGB+ED -> (...,:3) colour, (...,3:4) expected (median) depth
+            return renders[..., :3], renders[..., 3:4], alphas, info
         return renders, alphas, info
 
     # ------------------------------------------------------------------ #
@@ -118,6 +122,20 @@ class GsplatBackend(TrainingBackend):
         except Exception as e:
             log.warning("strategy sanity check: %s", e)
 
+        # Room bounding box (AABB of cameras+points, expanded) to keep Gaussians
+        # inside the captured room and kill runaway floaters.
+        box_lo = box_hi = None
+        if cfg.bounds.enabled:
+            from .dataset import _center_from_viewmat
+            pts = [train_ds.points] if len(train_ds.points) else []
+            cams = np.array([_center_from_viewmat(s.viewmat) for s in train_ds.samples])
+            allp = np.concatenate(pts + [cams], axis=0) if pts else cams
+            lo, hi = allp.min(0), allp.max(0)
+            m = cfg.bounds.margin * (hi - lo)
+            box_lo = torch.tensor(lo - m, dtype=torch.float32, device=device)
+            box_hi = torch.tensor(hi + m, dtype=torch.float32, device=device)
+            log.info("room box (normalized): lo=%s hi=%s", np.round(lo - m, 2), np.round(hi + m, 2))
+
         # resume
         start_step = 0
         if ctx.resume:
@@ -140,6 +158,18 @@ class GsplatBackend(TrainingBackend):
             deg = min(cfg.sh_degree, max(0, start_step // 1000))
             r, _, _ = self._rasterize(gsplat, params, vm, K, w, h, cfg.sh_degree, near, far)
             return r[0]
+
+        # Monocular-depth prior (A3): precompute per-frame depth targets once.
+        depth_bank = None
+        if cfg.depth_prior.enabled:
+            from .depth_priors import DepthPriorBank, pearson_depth_loss
+            # cache at the dataset level (run_dir) so every training run on these
+            # frames reuses the depth maps instead of recomputing them.
+            depth_bank = DepthPriorBank.build(
+                train_ds.samples, layout.run_dir / "depth_prior",
+                cfg.depth_prior.model, device)
+            if depth_bank is None:
+                log.warning("depth prior requested but unavailable; training photometric-only")
 
         max_iters = cfg.max_iterations
         # Standard 3DGS position-LR decay: without it the Gaussian centers keep
@@ -173,11 +203,24 @@ class GsplatBackend(TrainingBackend):
             vm, K, w, h = train_ds.camera_tensors(idx, device)
             sh_now = min(cfg.sh_degree, step // 1000)
 
-            renders, alphas, info = self._rasterize(gsplat, params, vm, K, w, h, sh_now,
-                                                    near, far)
-            render = renders[0]
+            want_depth = depth_bank is not None and step >= cfg.depth_prior.start_iter
+            if want_depth:
+                rgb, depth_map, alphas, info = self._rasterize(
+                    gsplat, params, vm, K, w, h, sh_now, near, far, with_depth=True)
+                render = rgb[0]
+            else:
+                renders, alphas, info = self._rasterize(gsplat, params, vm, K, w, h, sh_now,
+                                                        near, far)
+                render = renders[0]
             loss, l1, ssim_val = photometric_loss(render, gt, mask_t, cfg.l1_lambda,
                                                   cfg.ssim_lambda)
+            depth_loss_val = 0.0
+            if want_depth:
+                tgt = depth_bank.get(train_ds.samples[idx].name, device, (h, w))
+                if tgt is not None:
+                    dl = pearson_depth_loss(depth_map[0, ..., 0], tgt, mask_t)
+                    loss = loss + cfg.depth_prior.lambda_depth * dl
+                    depth_loss_val = float(dl.detach())
             health.check_loss(float(loss.detach()), step)
 
             strategy.step_pre_backward(params, optimizers, strategy_state, step, info)
@@ -197,6 +240,22 @@ class GsplatBackend(TrainingBackend):
                             "and continuing to optimize", dcfg.cap_max, step)
                 cap_frozen = True
 
+            # Regularization: suppress out-of-room + oversized 'flying' Gaussians by
+            # driving their opacity to ~0 (no size change -> no strategy-state conflict);
+            # the DefaultStrategy's opacity prune then removes them during densification.
+            if step > 0:
+                with torch.no_grad():
+                    kill = None
+                    if box_lo is not None and step % cfg.bounds.prune_every == 0:
+                        m = params["means"]
+                        kill = ((m < box_lo) | (m > box_hi)).any(dim=1)
+                    if cfg.floater.enabled and step % cfg.floater.prune_every == 0:
+                        huge = torch.exp(params["scales"]).max(dim=1).values > \
+                            cfg.floater.max_scale_frac * scene_scale
+                        kill = huge if kill is None else (kill | huge)
+                    if kill is not None and bool(kill.any()):
+                        params["opacities"].data[kill] = -20.0  # sigmoid(-20) ~ 2e-9
+
             n_gauss = params["means"].shape[0]
             if step % 50 == 0:
                 health.check_gaussian_count(n_gauss, step)
@@ -210,6 +269,7 @@ class GsplatBackend(TrainingBackend):
                     "psnr": psnr(render.detach(), gt, mask_t), "n_gaussians": n_gauss,
                     "max_scale": max_scale, "mean_opacity": mean_opa,
                     "sh_degree": sh_now, "iters_per_s": round(ips, 2),
+                    "depth_loss": depth_loss_val,
                 })
 
             # validation
@@ -239,6 +299,24 @@ class GsplatBackend(TrainingBackend):
                 save_checkpoint(ckpt_dir, params, optimizers, step, {"preempted": True})
                 status = "PREEMPTED"
                 break
+
+        # Final hard prune (only on clean completion; a preempted run resumes and must
+        # keep its optimizer state intact). Removes faint + out-of-room Gaussians for a
+        # clean, floater-free deliverable model.
+        if status == "COMPLETED" and (cfg.floater.enabled or box_lo is not None):
+            with torch.no_grad():
+                keep = torch.sigmoid(params["opacities"].squeeze(-1)) >= cfg.floater.min_opacity
+                if box_lo is not None:
+                    m = params["means"]
+                    keep = keep & ~((m < box_lo) | (m > box_hi)).any(dim=1)
+                n_before = int(params["means"].shape[0])
+                if bool((~keep).any()):
+                    idx = keep.nonzero(as_tuple=True)[0]
+                    import torch.nn as _nn
+                    for k in list(params.keys()):
+                        params[k] = _nn.Parameter(params[k].data[idx])
+                    log.info("final prune: %d -> %d gaussians (%.1f%% floaters removed)",
+                             n_before, len(idx), 100 * (1 - len(idx) / max(n_before, 1)))
 
         final = save_checkpoint(ckpt_dir, params, optimizers, min(step, max_iters - 1),
                                 {"final": True})
