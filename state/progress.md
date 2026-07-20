@@ -84,10 +84,14 @@ Reg run `gsplat_reg_30k` (same GLOMAP as baseline, controlled comparison):
 ## Cluster/ops note (2026-07-16)
 GPURACK5 (RTX PRO 6000) went **down** mid-visualize; the reg pipeline had already
 completed (train/eval/export/visualize) so nothing was lost.
-**Node driver constraint (important):** the `v2gs` env (torch **cu128**) only runs
-on nodes with a new-enough driver. GPURACK1 (3090) and GPURACK3 (4090) have an old
-driver (CUDA **12.0** / reported 12080) → torch aborts with "driver too old"; jobs
-there fail with `CUDA not available`. **Only the Blackwell nodes GPURACK5 (down) and
-GPURACK4 (5080, usually full with gs-jepa) can run GPU work.** So "free CPU" nodes
-are not usable for this env — GPU experiments must wait for a Blackwell node.
+**Node driver constraint (important, verified by probing each node):** the `v2gs`
+env (torch cu130) only runs where the driver is new enough. **GPURACK1 (3090),
+GPURACK3 (4090) AND GPURACK4 (5080) all report driver 12080 "too old" →
+`torch.cuda.is_available() == False`.** Being Blackwell is NOT sufficient —
+GPURACK4 has a 5080 and still fails. **Only GPURACK2 (RTX PRO 4500 Blackwell,
+verified SM 12.0 / torch 2.13.0+cu130) and GPURACK5 (RTX PRO 6000, currently
+DOWN) can run GPU work.** Always probe a node before submitting.
+CPU-only stages (extract/filter/COLMAP — SIFT is CPU by default) DO run on the
+old-driver nodes, so reconstructing on one node and re-running `--from-stage
+train` on a CUDA-capable node is a valid split.
 Housekeeping: removed 4 superseded run dirs (~6 GB) + accumulated debug junk.

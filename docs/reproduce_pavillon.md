@@ -34,12 +34,27 @@ on par with the baseline; the gap appears only on the held-out test split.
 The environment pins **PyTorch cu128/cu130**, which requires a *recent* NVIDIA
 driver. On this cluster that means **only the Blackwell nodes work**:
 
-| Node | GPU | Usable? |
+| Node | GPU | Usable? (verified by probe) |
 |---|---|---|
-| GPURACK5 | RTX PRO 6000 (96 GB) | ✅ preferred (heavy runs) |
-| GPURACK2 | RTX PRO 4500 Blackwell (34 GB) | ✅ |
-| GPURACK4 | RTX 5080 (16 GB) | ✅ (less VRAM/RAM) |
-| GPURACK1 / GPURACK3 | 3090 / 4090 | ❌ driver too old (CUDA 12.0) → `CUDA not available` |
+| GPURACK2 | RTX PRO 4500 Blackwell (34 GB) | ✅ **verified** — SM 12.0, torch 2.13.0+cu130 |
+| GPURACK5 | RTX PRO 6000 (96 GB) | ✅ ran all earlier work — but currently `DOWN` |
+| GPURACK4 | RTX 5080 (16 GB) | ❌ driver 12080 too old (despite being Blackwell) |
+| GPURACK1 / GPURACK3 | 3090 / 4090 | ❌ driver 12080 too old |
+
+Do **not** assume a node is usable because its GPU is new — GPURACK4 has a Blackwell
+5080 yet still reports `CUDA initialization: driver too old (found version 12080)`
+and `torch.cuda.is_available() == False`. Probe before submitting:
+
+```bash
+srun --partition=<p> --nodelist=<node> --gres=gpu:1 --time=00:03:00 \
+  bash -lc 'source scripts/_activate_env.sh >/dev/null 2>&1;
+            python -c "import torch; print(torch.cuda.is_available())"'
+```
+
+Note that CPU-only stages (frame extraction, filtering, **COLMAP/GLOMAP** — SIFT
+runs on CPU by default) work fine on the old-driver nodes; only `train`, `evaluate`
+and the renders need CUDA. So it is legitimate to reconstruct on one node and then
+re-run just `--from-stage train` on a CUDA-capable one.
 
 > **Memory warning.** Slurm here reports `RealMemory=1` and gathers no memory
 > accounting (`SelectTypeParameters=CR_CORE`), so **it enforces no RAM limit**. A
