@@ -136,6 +136,41 @@ cameras collapses to a tight, clean cluster. Takeaway: for room captures like th
 the scale+opacity floater prune does the work; the room AABB matters more for
 captures where Gaussians actually escape to infinity.
 
+## Appearance embeddings work — but merging IMG_9649 does not help (negative result)
+`train.appearance_embedding` is implemented (per-image GLO latent -> global affine
+colour transform, identity-initialised, provably unable to encode geometry since it
+commutes with any pixel permutation). The mechanism validates: SfM merged the two
+clips at **332/332 registered, 0.921px reproj, 170 232 points, 266 train views**,
+and `appearance_drift` settled at **0.05-0.066** (non-zero => the clips really do
+differ photometrically and the latents are absorbing it).
+
+**But the merged reconstruction is worse than the single-clip one**: test PSNR
+**19.02** / SSIM 0.824 / LPIPS 0.362, versus 23.08 / 0.846 / 0.310 for
+`gsplat_hidetail_30k`. Decomposing the gap on validation renders by fitting the
+optimal per-channel gain+bias (which removes any *global* photometric mismatch):
+
+| model | raw PSNR | after colour fit | photometric share |
+|---|---|---|---|
+| hi-detail  | 24.10 | 24.49 | 0.39 dB |
+| multi-clip | 18.64 | 20.76 | **2.13 dB** |
+
+So ~1.7 dB of the loss is an **evaluation artifact** — we score against the *mean*
+training latent, and a single canonical appearance matches neither clip when the
+drift is real (this is a genuine methodological cost of appearance embeddings, and
+why NeRF-W fits a test latent on a held-out image half). The remaining **~3.7 dB is
+real geometric degradation**: inspecting val renders shows most views are plausible
+but at least one is catastrophically smeared.
+
+Why: the clips are co-located (camera centroids 0.39 apart vs a 0.46 cloud radius,
+so they do overlap) but IMG_9649 contributes only 48 train views while enlarging the
+reconstructed volume (point extent [2.53, 9.61, 8.7]). The same 1.5M Gaussian budget
+is then spread over more scene, and the thinly-observed regions reconstruct badly and
+land in val/test. **Coverage only helps when new views re-observe the SAME surfaces
+from new angles; views that extend the scene add complexity without adding
+constraint.** Conclusion: keep `gsplat_hidetail_30k` as the deliverable; retain the
+appearance implementation for captures that genuinely re-observe the same region
+(and raise `cap_max` if the merged volume grows).
+
 ## Resolution/coverage beats regularizer tuning (high-detail run)
 Per-view analysis of the A3 model showed every catastrophic held-out view
 (12.7-18.8 dB) was an EXTREME CLOSE-UP at a grazing angle, while medium-distance

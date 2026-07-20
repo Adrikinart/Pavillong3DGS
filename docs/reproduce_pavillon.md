@@ -12,6 +12,7 @@ Everything below is driven by two config files; no code edits are needed.
 | **A3 regularized** | `pavillon_orbit_reg.yaml` | 22.3 / 0.796 / 0.290 | **1.22 M** | 20.2 % | **301 MB** |
 | A3 ablation (depth off) | `pavillon_orbit_reg_nodepth.yaml` | 22.6 / 0.798 / 0.294 | 1.23 M | 18.0 % | 306 MB |
 | **High-detail** (2560px, 282 imgs) | `pavillon_orbit_hidetail.yaml` | 23.1 / **0.846** / 0.310 | 1.24 M | 18.0 % | 309 MB |
+| Multi-clip + appearance | `pavillon_multiclip.yaml` | 19.0 / 0.824 / 0.362 | 1.23 M | 18.9 % | 304 MB |
 
 > **The high-detail row is NOT directly comparable to the rows above it.** It is a
 > different dataset (its own `object_name` → its own COLMAP, splits and test views:
@@ -25,6 +26,15 @@ Everything below is driven by two config files; no code edits are needed.
 > | mean SSIM | 0.796 | **0.846** |
 > | best view | 26.5 | **31.9** |
 > | catastrophic views (<18 dB) | 3/18 (17 %) | 3/28 (**11 %**) |
+>
+> **Multi-clip is a negative result — the recommended model is `pavillon_orbit_hidetail`.**
+> Merging IMG_9649 via appearance embeddings reconstructs a *worse* model despite
+> flawless SfM (332/332 registered, 0.921 px, 266 train views) and a confirmed
+> non-zero `appearance_drift`. Roughly 1.7 dB of the loss is an evaluation artifact
+> (scoring against the mean training latent, which matches neither clip), but ~3.7 dB
+> is genuine geometric degradation: the second clip adds only 48 training views while
+> enlarging the reconstructed volume, spreading the same Gaussian budget thinner.
+> Extra views help only when they re-observe the SAME surfaces from new angles.
 >
 > SfM also improved outright: **282/282 images registered (100 %)** with **152 792**
 > sparse points, versus 181/193 (94 %) and 80 913 at 1600px.
