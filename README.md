@@ -13,6 +13,12 @@ raw videos → inspect → extract frames → filter → (mask) → COLMAP → v
            → normalize → split → train (gsplat) → evaluate → export → report
 ```
 
+> **Want to re-create the trained Pavillon model?** Follow
+> **[docs/reproduce_pavillon.md](docs/reproduce_pavillon.md)** — a complete,
+> config-driven recipe (env → data → GLOMAP → training with the A3 geometry
+> regularizers → export → verification), including the hardware/driver
+> constraints and expected metrics.
+
 ## 1. Supported capture assumptions
 - One static physical object **or** a static scene; the camera moves around it.
 - Multiple heights/elevations, background visible, pedestal allowed.
@@ -109,6 +115,7 @@ Preprocess once, then fan out trainings as a Slurm job array
 build. One GPU per training (object-scale); multi-GPU is for parallel experiments.
 
 ## Further docs
+- **[docs/reproduce_pavillon.md](docs/reproduce_pavillon.md) — reproduce the trained Pavillon model end-to-end (start here)**
 - [docs/cluster_environment.md](docs/cluster_environment.md)
 - [docs/pipeline_architecture.md](docs/pipeline_architecture.md)
 - [docs/colmap_guide.md](docs/colmap_guide.md) — how to run COLMAP (it's env-provided, not a module)
