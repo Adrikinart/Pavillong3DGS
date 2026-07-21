@@ -1,125 +1,209 @@
-# video_to_3dgs
+# video_to_3dgs — Pavillon
 
-Raw object/scene videos → trained, evaluated, exportable **3D Gaussian Splatting**
-reconstructions, orchestrated across an SSH-accessible Slurm GPU cluster with
-NVIDIA **Blackwell** GPUs.
+Raw handheld video → a trained, evaluated, exportable **3D Gaussian Splatting**
+reconstruction, orchestrated end-to-end on a Slurm GPU cluster.
 
-The pipeline is modular, resumable, idempotent, scheduler-friendly, and
-storage-efficient. Every stage is independently re-runnable and is the only
-writer of its own status file, so a failed stage never marks itself complete.
+<p align="center">
+  <img src="docs/assets/orbit.gif" width="620" alt="Orbit render of the reconstructed carved panel"><br>
+  <em>Novel-view orbit of the reconstructed carved ceiling panel (2560px model, 1.24 M Gaussians)</em>
+</p>
 
-```
-raw videos → inspect → extract frames → filter → (mask) → COLMAP → validate
-           → normalize → split → train (gsplat) → evaluate → export → report
-```
+---
 
-> **Want to re-create the trained Pavillon model?** Follow
-> **[docs/reproduce_pavillon.md](docs/reproduce_pavillon.md)** — a complete,
-> config-driven recipe (env → data → GLOMAP → training with the A3 geometry
-> regularizers → export → verification), including the hardware/driver
-> constraints and expected metrics.
+## Executive summary
 
-## 1. Supported capture assumptions
-- One static physical object **or** a static scene; the camera moves around it.
-- Multiple heights/elevations, background visible, pedestal allowed.
-- Optional **turntable** mode (object rotates) — masks become mandatory.
-- Objective: object-centric novel-view rendering; geometry usable downstream.
+**The subject.** A carved wooden ceiling panel, stood vertical and filmed handheld
+in a room. This capture is close to a worst case for 3DGS: **single-sided** (the
+camera never goes around the object), **low-parallax**, **close-range**, and the
+subject is a **near-planar relief** whose value is entirely in high-frequency
+carving detail.
 
-## 2. Recommended capture protocol
-See [docs/capture_guide.md](docs/capture_guide.md). In short: keep the object
-static, move the camera, multiple elevation orbits, maintain overlap, avoid pure
-rotation and motion blur, lock focus/exposure/WB, no digital zoom.
+**The outcome.** A sharp, floater-free reconstruction at **PSNR 23.1 / SSIM 0.846**,
+exported as a standard `.ply`, with the whole pipeline reproducible from two
+config files.
 
-## 3. Environment (Blackwell / sm_120)
-Blackwell needs a **cu128** PyTorch build. `tiny-cuda-nn` is avoided; the default
-backend is **direct gsplat**. Build the env once with the local-disk mamba
-(fast solver, writes to an NFS prefix the GPU nodes can see):
+**What actually moved the needle**, in order of impact:
+
+| # | Change | Effect |
+|---|---|---|
+| 1 | **Global SfM (GLOMAP)** instead of incremental COLMAP | **181/193** images registered vs **82** — 2.2× coverage |
+| 2 | **Two trainer bugs** — scene scale from points not cameras; missing position-LR decay | PSNR **14 → 24**, fog → sharp |
+| 3 | **Resolution** — stopped downscaling 4K → 1600px | median PSNR **23.4 → 24.5**, SSIM **0.796 → 0.846**, **282/282** registered |
+| 4 | **Anti-floater regularization** | **18.2 % → 0 %** near-transparent haze; max Gaussian scale **1.00 → 0.16** |
+| 5 | **Per-image appearance embeddings** | unlocks multi-clip merging (**332/332** registered across 2 clips) |
+
+**What did not work**, reported because negative results are cheap to hide and
+expensive to rediscover: **2DGS** collapses to flat renders (PSNR ~13) on a
+single-sided capture, and **merging a second clip** still loses ~1 dB even with
+appearance embeddings.
+
+---
+
+## Metrics study
+
+| Model | Config | PSNR | SSIM | LPIPS | Gaussians | `.ply` |
+|---|---|---:|---:|---:|---:|---:|
+| Baseline (GLOMAP + 3DGS) | `pavillon_orbit_hq` | **23.9** | 0.825 | **0.245** | 1.53 M | 374 MB |
+| A3 regularized | `pavillon_orbit_reg` | 22.3 | 0.796 | 0.290 | 1.22 M | 301 MB |
+| A3 ablation (depth off) | `pavillon_orbit_reg_nodepth` | 22.6 | 0.798 | 0.294 | 1.23 M | 306 MB |
+| ⭐ **High-detail (recommended)** | `pavillon_orbit_hidetail` | 23.1 | **0.846** | 0.310 | 1.24 M | 309 MB |
+| Multi-clip + appearance | `pavillon_multiclip` | 22.0 | 0.833 | 0.342 | 1.23 M | 304 MB |
+
+> ⚠️ **These rows are not all directly comparable.** The high-detail and multi-clip
+> models are separate datasets with their own COLMAP, their own held-out splits and
+> a different resolution (28–33 test views at 2560px vs 18 at 1600px). PSNR and
+> LPIPS in particular shift with image resolution. Where resolutions differ we
+> compare **distributions**, not single numbers.
+
+**Distribution comparison** (the honest one — larger, harder split, and it still wins):
+
+| | A3 @1600px | High-detail @2560px |
+|---|---:|---:|
+| median PSNR | 23.43 | **24.48** |
+| mean SSIM | 0.796 | **0.846** |
+| best view | 26.5 | **31.9** |
+| catastrophic views (<18 dB) | 3/18 (17 %) | 3/28 (**11 %**) |
+
+### Reading these metrics
+
+The three metrics disagree by design, and the disagreements are the interesting part:
+
+- **PSNR** is mean-squared-error in disguise. It rewards blur and is dominated by
+  low-frequency agreement — and it is very sensitive to a global brightness shift.
+- **SSIM** compares local luminance/contrast/structure. For a *relief* subject this
+  is the metric that tracks what we care about, and it is largely blind to global
+  photometric offsets.
+- **LPIPS** compares deep features and best matches human judgement.
+
+Two cases where this mattered concretely:
+
+1. **The A3 regularizers lower PSNR by ~1.4 dB while making the model objectively
+   cleaner** (18 % of Gaussians removed as haze). An ablation showed the cost is the
+   *final opacity prune*, **not** the depth prior — which only accounts for 0.26 dB.
+2. **A 4 dB "regression" that was mostly a measurement bug.** The multi-clip model
+   scored 19.0 until we noticed `evaluate` rendered without restoring the appearance
+   model — scoring the *uncorrected* output while training optimised corrected ones.
+   Fixing it gave **+3.02 dB** (→ 22.0). The tell was that **PSNR collapsed while
+   SSIM barely moved**, which is the signature of a global photometric offset rather
+   than broken geometry.
+
+**Aggregate means hide the failure structure.** Per-view analysis is what diagnosed
+the biggest win: every catastrophic view was an extreme close-up at grazing
+incidence, which identified a *spatial-frequency deficit* (we were throwing away 4K
+detail) and motivated the high-detail run.
+
+<p align="center">
+  <img src="docs/assets/per_view_metrics.png" width="760" alt="Per-view metrics"><br>
+  <em>Per-view metrics — the tail, not the mean, is where the diagnosis lives</em>
+</p>
+
+---
+
+## Visual results
+
+<p align="center">
+  <img src="docs/assets/qualitative.png" width="900" alt="Ground truth vs render vs error"><br>
+  <em>Held-out views: ground truth │ render │ error map</em>
+</p>
+
+<p align="center">
+  <img src="docs/assets/floater_spatial.png" width="820" alt="Floater removal"><br>
+  <em><b>Anti-floater regularization.</b> Baseline (top) sprays a diffuse streak of
+  faint Gaussians toward the cameras; the regularized model (bottom) is a tight,
+  solid cluster. Median opacity 0.51 → 0.88, max scale 1.00 → 0.16.</em>
+</p>
+
+<p align="center">
+  <img src="docs/assets/training_curves.png" width="760" alt="Training curves">
+</p>
+
+Every run also writes `videos/orbit.mp4` (front-arc novel-view sweep) and
+`videos/training_progression.mp4` (reconstruction quality over iterations). These
+are run artifacts and are not committed — the pipeline regenerates them.
+
+---
+
+## Quickstart
 
 ```bash
-scripts/bootstrap_environment.sh          # creates /home/$USER/envs/v2gs
+# 0. one-time environment (torch cu128/cu130 + gsplat + COLMAP/GLOMAP)
+scripts/bootstrap_environment.sh
+
+# 1. verify the target GPU node actually works (drivers here are inconsistent)
+srun --partition=rtxpro --nodelist=GPURACK2 --gres=gpu:1 --time=00:25:00 \
+  bash -lc 'export MAX_JOBS=4; source scripts/_activate_env.sh; python scripts/gsplat_selftest.py'
+
+# 2. full reconstruction: extract → filter → GLOMAP → normalize → split
+#    → train → evaluate → export → visualize
+sbatch scripts/slurm/train.sbatch configs/pipeline/pavillon_orbit_hidetail.yaml
+
+# 3. train a sibling model on the SAME reconstruction (skips the expensive SfM)
+sbatch scripts/slurm/train.sbatch configs/pipeline/pavillon_orbit_reg.yaml \
+       --force --from-stage train
 ```
 
-Then validate on a Blackwell node:
+Per-stage control, all with `--dry-run / --force / --resume / --verbose / --set k=v`:
 
 ```bash
-srun --partition=rtxpro --nodelist=GPURACK5 --gres=gpu:1 --time=00:15:00 \
-  /home/$USER/envs/v2gs/bin/python -m video_to_3dgs.cli inspect-env --gpu-check \
-  --out experiments/env_gpurack5.json
+python -m video_to_3dgs.cli inspect-env --gpu-check      # driver, sm_120, gsplat smoke test
+python -m video_to_3dgs.cli extract-frames --config <cfg>
+python -m video_to_3dgs.cli reconstruct    --config <cfg>   # COLMAP / GLOMAP
+python -m video_to_3dgs.cli train          --config <cfg>
+python -m video_to_3dgs.cli evaluate       --config <cfg>   # held-out only
+python -m video_to_3dgs.cli export         --config <cfg>   # .ply + cameras + transforms
+python -m video_to_3dgs.cli run-all        --config <cfg> [--from-stage S --only S]
+python -m video_to_3dgs.cli status         --config <cfg>
 ```
 
-`inspect-env` records driver, compute capability, torch/cuda, runs a CUDA
-forward+backward smoke test and a gsplat rasterization test, and checks that the
-installed PyTorch wheel contains kernels for the device's `sm_120`.
+Analysis utilities:
 
-## 4. Storage
-- High-I/O work (COLMAP SQLite, temp frames) runs on **node-local** `/var/tmp/$USER`.
-- Durable outputs live under `experiments/runs/<dataset_id>/` on `/home`.
-- The env build is one-time; caches (`TORCH_EXTENSIONS_DIR`) go on node-local scratch.
-
-## 5. Quickstart — smoke test (end-to-end, machine-verifiable)
 ```bash
-scripts/run_smoke_test.sh rtxpro GPURACK5
-# on success writes experiments/SMOKE_TEST_OK and exits 0
+python scripts/floater_spatial.py <dataset_id> <a.ply> <b.ply> out.png   # floater comparison, CPU-only
+python scripts/gsplat_selftest.py                                        # per-node CUDA/gsplat check
 ```
 
-## 6. Full reconstruction (Pavillon scene example)
-```bash
-# local (inside a GPU allocation):
-scripts/run_pipeline.sh local configs/pipeline/scene_pavillon.yaml
-# via Slurm (preprocess then train, dependency-chained):
-scripts/run_pipeline.sh slurm configs/pipeline/scene_pavillon.yaml
+---
+
+## How it works
+
+```
+video → inspect → extract frames → quality filter → [masks] → COLMAP/GLOMAP
+      → validate → normalize → pose-aware split → train (gsplat) → evaluate
+      → export (.ply) → report (figures + videos)
 ```
 
-## 7. CLI
-```bash
-python -m video_to_3dgs.cli inspect-env [--gpu-check --out env.json]
-python -m video_to_3dgs.cli prepare              --config <cfg>
-python -m video_to_3dgs.cli inspect-video        --config <cfg>
-python -m video_to_3dgs.cli extract-frames       --config <cfg>
-python -m video_to_3dgs.cli filter-frames        --config <cfg>
-python -m video_to_3dgs.cli generate-masks       --config <cfg>
-python -m video_to_3dgs.cli reconstruct          --config <cfg>   # COLMAP
-python -m video_to_3dgs.cli validate-reconstruction --config <cfg>
-python -m video_to_3dgs.cli normalize            --config <cfg>
-python -m video_to_3dgs.cli split                --config <cfg>
-python -m video_to_3dgs.cli train                --config <cfg>
-python -m video_to_3dgs.cli evaluate             --config <cfg>
-python -m video_to_3dgs.cli export               --config <cfg>
-python -m video_to_3dgs.cli run-all              --config <cfg> [--from-stage S --to-stage S --only S]
-python -m video_to_3dgs.cli status               --config <cfg>
-python -m video_to_3dgs.cli report               --config <cfg> [--train-run-id ID]
-```
-Every stage supports `--dry-run`, `--force`, `--resume` (default), `--verbose`,
-`--set key=value` overrides, and returns clear exit codes.
+The **filesystem is the source of truth** — no daemon, no database. Each stage is
+the only writer of its own status file and reaches `COMPLETED` only after its
+outputs validate, so a crash never leaves a false success. A fingerprint over
+(parameters + input checksums) drives skip/rerun and invalidates downstream stages
+automatically. Training checkpoints atomically and resumes from the latest valid
+checkpoint; SIGTERM flushes a checkpoint and exits 0 for Slurm requeue.
 
-## 8. Monitoring
-- Structured logs: `experiments/runs/<id>/logs/*.jsonl` (mandatory).
-- TensorBoard: `tensorboard --logdir experiments/runs/<id>/trainings/<run>/tb`.
-- GPU/system stats sampled to `system_monitoring.jsonl`.
-- Fixed-camera validation renders under `trainings/<run>/renders/`.
+**Techniques implemented** beyond vanilla 3DGS:
 
-## 9. Resuming
-Training checkpoints atomically and resumes from the latest valid checkpoint
-automatically (`--resume` is default). Slurm preemption (SIGTERM) flushes a
-checkpoint and exits 0 for `--requeue`. Just resubmit the same job/command.
+| Technique | Knob | Notes |
+|---|---|---|
+| Global SfM | `run_colmap.mapper_backend: glomap` | 2.2× registration on low-overlap capture |
+| Room bounds | `train.bounds` | constrains Gaussians to the captured volume |
+| Anti-floater | `train.floater` | scale/opacity suppression + final hard prune |
+| Monocular depth prior | `train.depth_prior` | DepthAnything-v2 + scale-invariant Pearson loss |
+| Appearance embeddings | `train.appearance_embedding` | per-image latent → affine colour transform |
+| 2DGS surface backend | `train.backend: 2dgs` | implemented; underperforms on this capture |
 
-## 10. Evaluation & export
-Evaluation is **only** on held-out views (PSNR/SSIM/LPIPS + masked variants,
-render FPS, VRAM, model size). Model selection uses validation metrics, never
-training loss. Export produces a native 3DGS `.ply`, camera json, the
-normalization transform, and a coordinate-conventions doc (Blender/Unity).
+---
 
-## 11. Multiple experiments (sweeps)
-Preprocess once, then fan out trainings as a Slurm job array
-(`scripts/slurm/sweep.sbatch`) — different seeds/configs share the same COLMAP
-build. One GPU per training (object-scale); multi-GPU is for parallel experiments.
+## Documentation
 
-## Further docs
-- **[docs/reproduce_pavillon.md](docs/reproduce_pavillon.md) — reproduce the trained Pavillon model end-to-end (start here)**
-- [docs/cluster_environment.md](docs/cluster_environment.md)
-- [docs/pipeline_architecture.md](docs/pipeline_architecture.md)
-- [docs/colmap_guide.md](docs/colmap_guide.md) — how to run COLMAP (it's env-provided, not a module)
-- [docs/experiment_protocol.md](docs/experiment_protocol.md)
-- [docs/troubleshooting.md](docs/troubleshooting.md)
-- [docs/capture_guide.md](docs/capture_guide.md)
-- [docs/video_to_3dgs_plan.md](docs/video_to_3dgs_plan.md)
+- **[docs/reproduce_pavillon.md](docs/reproduce_pavillon.md)** — reproduce the model end-to-end (start here)
+- **[docs/report/theory.tex](docs/report/theory.tex)** — cited theory: representation, EWA projection, compositing, density control, depth priors, appearance modelling
+- [docs/pipeline_architecture.md](docs/pipeline_architecture.md) · [docs/colmap_guide.md](docs/colmap_guide.md) · [docs/capture_guide.md](docs/capture_guide.md) · [docs/troubleshooting.md](docs/troubleshooting.md)
+- [state/decisions.md](state/decisions.md) — every technical decision with its evidence, **including retractions**
+
+## Capture advice (learned the hard way)
+
+The single biggest determinant of quality is **coverage**, and no amount of
+regularization recovers a surface that only one camera saw well. When filming:
+orbit the object rather than panning, vary elevation, keep generous overlap
+between consecutive frames, lock exposure/white-balance if you can, and avoid
+extreme close-ups at grazing incidence — those were every one of our worst
+reconstructed views.
