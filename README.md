@@ -43,16 +43,35 @@ appearance embeddings.
 
 ## Metrics study
 
-| Model | Config | PSNR | SSIM | LPIPS | Gaussians | `.ply` |
-|---|---|---:|---:|---:|---:|---:|
-| Baseline (GLOMAP + 3DGS) | `pavillon_orbit_hq` | **23.9** | 0.825 | **0.245** | 1.53 M | 374 MB |
-| A3 regularized | `pavillon_orbit_reg` | 22.3 | 0.796 | 0.290 | 1.22 M | 301 MB |
-| A3 ablation (depth off) | `pavillon_orbit_reg_nodepth` | 22.6 | 0.798 | 0.294 | 1.23 M | 306 MB |
-| High-detail (cap 1.5M) | `pavillon_orbit_hidetail` | 23.1 | 0.846 | 0.310 | 1.24 M | 295 MB |
-| High-detail, cap 750k | `pavillon_orbit_hidetail_cap750k` | 24.3 | 0.860 | **0.303** | 0.65 M | 155 MB |
-| ⭐ **High-detail, cap 375k (recommended)** | `pavillon_orbit_hidetail_cap375k` | **24.9** | **0.862** | 0.313 | **0.36 M** | **~90 MB** |
-| Multi-clip + appearance | `pavillon_multiclip` | 22.0 | 0.833 | 0.342 | 1.23 M | 304 MB |
-| Multi-clip, 2× budget | `pavillon_multiclip_cap3m` | 21.4 | 0.824 | 0.346 | 2.50 M | 508 MB |
+Every model we trained, grouped by dataset. **Compare only within a group** —
+each group has its own SfM solution, held-out split and resolution.
+
+**1600 px dataset** (18 test views)
+
+| Model | Config | PSNR | SSIM | LPIPS | Gaussians |
+|---|---|---:|---:|---:|---:|
+| Baseline (GLOMAP + 3DGS) | `pavillon_orbit_hq` | **23.9** | **0.825** | **0.245** | 1.53 M |
+| A3 regularized | `pavillon_orbit_reg` | 22.3 | 0.796 | 0.290 | 1.22 M |
+| A3 ablation (depth off) | `pavillon_orbit_reg_nodepth` | 22.6 | 0.798 | 0.294 | 1.23 M |
+| 2DGS backend ❌ | `pavillon_orbit_2dgs` | 13.3 | 0.578 | 0.847 | 0.28 M |
+
+**2560 px dataset** (28 test views) — the capacity sweep
+
+| Model | Config | PSNR | median | SSIM | LPIPS | <18 dB | Gaussians | `.ply` |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| cap 1.5 M | `..._hidetail` | 23.08 | 24.48 | 0.846 | 0.310 | 11 % | 1.24 M | 295 MB |
+| cap 750 k | `..._hidetail_cap750k` | 24.32 | 25.10 | 0.860 | **0.303** | 11 % | 0.65 M | 162 MB |
+| ⭐ **cap 375 k (recommended)** | `..._hidetail_cap375k` | **24.92** | 25.13 | **0.862** | 0.313 | **0 %** | **0.36 M** | **89 MB** |
+| cap 190 k | `..._hidetail_cap190k` | 24.86 | **25.18** | 0.856 | 0.338 | **0 %** | 0.19 M | 48 MB |
+| + pose refinement ❌ | `..._hidetail_poseopt` | 23.94 | 24.40 | 0.829 | 0.330 | 0 % | 0.35 M | 88 MB |
+
+**Multi-clip dataset** (2 clips, 33 test views) — appearance embeddings
+
+| Model | Config | PSNR | median | SSIM | LPIPS | <18 dB | Gaussians |
+|---|---|---:|---:|---:|---:|---:|---:|
+| cap 3.0 M | `pavillon_multiclip_cap3m` | 21.36 | 21.23 | 0.824 | 0.346 | 33 % | 2.50 M |
+| cap 1.5 M | `pavillon_multiclip` | 22.03 | 22.82 | 0.833 | 0.342 | 24 % | 1.23 M |
+| cap 750 k | `pavillon_multiclip_cap750k` | **22.37** | **23.52** | **0.840** | **0.335** | **21 %** | 0.64 M |
 
 > ⚠️ **These rows are not all directly comparable.** The high-detail and multi-clip
 > models are separate datasets with their own COLMAP, their own held-out splits and
@@ -189,6 +208,27 @@ Every run also writes `videos/orbit.mp4` (front-arc novel-view sweep) and
 are run artifacts and are not committed — the pipeline regenerates them.
 
 ---
+
+## Settings of the recommended model
+
+One YAML file, no code changes (`configs/pipeline/pavillon_orbit_hidetail_cap375k.yaml`):
+
+| Stage | Setting | Value |
+|---|---|---|
+| Frames | sampling / resolution | 4 fps, ≤400 frames · long edge **2560 px** (source is 3840×2160) |
+| | blur filter | var-of-Laplacian ≥ 50, measured at a **fixed 1600 px reference scale** → 282/400 kept |
+| SfM | matcher / mapper | exhaustive · **GLOMAP** (global) |
+| | result | **282/282 registered**, 0.985 px reproj., 152 792 points |
+| Split | pose-aware | 226 train / 28 val / 28 test |
+| Train | backend / iters / SH | `gsplat` · 30 k · degree 3 |
+| | **capacity** | `cap_max` = **375 k** ← the single most important knob |
+| | densification | grad 3e-4, interval 100, iters 500–15 000, opacity reset 3000 |
+| | room bounds | AABB(cameras ∪ points) × 1.5, every 500 steps |
+| | anti-floater | scale > 0.15·extent suppressed; final prune below opacity 0.005 |
+| | depth prior | DepthAnything-v2-Small, Pearson loss, weight 0.1, from iter 2000 |
+
+Outputs: `point_cloud.ply` (89 MB) · `mesh.ply` (952 k verts) · orbit + progression
+videos · 5 figures · `eval.json` · a row in `experiments/registry.csv`.
 
 ## Quickstart
 

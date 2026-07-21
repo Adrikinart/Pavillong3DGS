@@ -151,7 +151,8 @@ class DensifyCfg(_Base):
     grad_threshold: float = 0.0002
     opacity_reset_interval: int = 3000
     prune_opacity: float = 0.005
-    cap_max: int = 1_000_000            # ceiling on #gaussians (health)
+    cap_max: int = 1_000_000            # default: ceiling on #gaussians; mcmc: target count
+    noise_lr: float = 5e5               # mcmc only: SGLD noise scale
 
 
 class BoundsCfg(_Base):

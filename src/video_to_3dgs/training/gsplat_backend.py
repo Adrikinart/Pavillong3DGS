@@ -135,15 +135,44 @@ class GsplatBackend(TrainingBackend):
             log.info("pose optimization ON: %d training cameras (lr=%.1e); "
                      "held-out poses are NOT refined", len(train_ds), cfg.pose_lr)
 
-        # densification strategy
+        # Densification strategy.
+        #
+        # `default` is the heuristic adaptive density control from the original
+        # 3DGS paper: clone/split wherever the view-space positional gradient
+        # exceeds a threshold, reset opacities periodically, prune the transparent.
+        #
+        # `mcmc` is 3D Gaussian Splatting as Markov Chain Monte Carlo
+        # (Kheradmand et al., NeurIPS 2024). It treats the primitives as samples
+        # from a distribution over scenes, adds SGLD noise to the updates, and
+        # replaces the clone/split heuristics with relocation of dead primitives
+        # onto live ones — transitions that approximately preserve sample
+        # probability. Its budget is a TARGET the sampler fills rather than a
+        # ceiling growth happens to hit, which is the principled version of the
+        # capacity effect we measured empirically.
         dcfg = cfg.densification
-        strategy = gsplat.DefaultStrategy(
-            prune_opa=dcfg.prune_opacity, grow_grad2d=dcfg.grad_threshold,
-            refine_start_iter=dcfg.start_iteration, refine_stop_iter=dcfg.stop_iteration,
-            reset_every=dcfg.opacity_reset_interval, refine_every=dcfg.interval,
-            verbose=False,
-        )
-        strategy_state = strategy.initialize_state(scene_scale=max(scene_scale, 1e-3))
+        use_mcmc = dcfg.strategy == "mcmc"
+        if use_mcmc:
+            strategy = gsplat.MCMCStrategy(
+                cap_max=dcfg.cap_max, noise_lr=dcfg.noise_lr,
+                refine_start_iter=dcfg.start_iteration,
+                refine_stop_iter=dcfg.stop_iteration,
+                refine_every=dcfg.interval, min_opacity=dcfg.prune_opacity,
+                verbose=False,
+            )
+            log.info("densification: MCMC (cap_max=%d target, noise_lr=%.1e)",
+                     dcfg.cap_max, dcfg.noise_lr)
+        else:
+            strategy = gsplat.DefaultStrategy(
+                prune_opa=dcfg.prune_opacity, grow_grad2d=dcfg.grad_threshold,
+                refine_start_iter=dcfg.start_iteration, refine_stop_iter=dcfg.stop_iteration,
+                reset_every=dcfg.opacity_reset_interval, refine_every=dcfg.interval,
+                verbose=False,
+            )
+        # The two strategies differ in signature: MCMC keeps no scene-scale state
+        # (its budget is absolute, not scale-relative) and takes the current LR at
+        # step time to scale its SGLD noise.
+        strategy_state = (strategy.initialize_state() if use_mcmc
+                          else strategy.initialize_state(scene_scale=max(scene_scale, 1e-3)))
         try:
             strategy.check_sanity(params, optimizers)
         except Exception as e:
@@ -293,12 +322,19 @@ class GsplatBackend(TrainingBackend):
                 pose_opt.step()
                 pose_opt.zero_grad(set_to_none=True)
             means_sched.step()   # decay position LR so Gaussians settle (sharpness)
-            # Densify/prune — but FREEZE growth once the cap is reached instead of
-            # crashing. gsplat's DefaultStrategy has no built-in cap, so gate it here.
-            if params["means"].shape[0] < dcfg.cap_max:
+            # Densify/prune. MCMC owns its budget (cap_max is a target it fills and
+            # holds) and needs the current means LR to scale its SGLD noise, so it
+            # takes a different call signature and must NOT be gated by our cap
+            # guard. DefaultStrategy has no built-in cap, so for it we FREEZE growth
+            # at the ceiling rather than crash.
+            if use_mcmc:
+                strategy.step_post_backward(
+                    params, optimizers, strategy_state, step, info,
+                    lr=means_sched.get_last_lr()[0])
+            elif params["means"].shape[0] < dcfg.cap_max:
                 strategy.step_post_backward(params, optimizers, strategy_state, step, info,
                                             packed=False)
-            elif not cap_frozen:
+            elif not use_mcmc and not cap_frozen:
                 log.warning("gaussian cap %d reached at step %d; freezing densification "
                             "and continuing to optimize", dcfg.cap_max, step)
                 cap_frozen = True
