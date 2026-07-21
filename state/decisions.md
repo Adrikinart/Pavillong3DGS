@@ -178,6 +178,35 @@ views while enlarging the reconstructed volume (point extent [2.53, 9.61, 8.7]),
 
 Conclusion: keep `gsplat_hidetail_30k` as the deliverable.
 
+### 3DGS-MCMC densification: implemented, and at parity with the heuristic
+`densification.strategy: mcmc` was a declared-but-unread flag; gsplat 1.5.3 ships
+`MCMCStrategy`, so this was implementation rather than research. MCMC treats
+primitives as samples, injects SGLD noise, and replaces clone/split heuristics with
+relocation of dead primitives onto live ones; its `cap_max` is a target the sampler
+fills rather than a ceiling growth happens to hit.
+
+Run at our measured-optimal budget (375k), changing only the strategy:
+
+| | Gaussians | PSNR | median | SSIM | LPIPS | <18 dB |
+|---|---:|---:|---:|---:|---:|---:|
+| ADC (default) | 358,878 | **24.92** | 25.13 | 0.8619 | 0.3132 | 0% |
+| MCMC | 365,497 | 24.83 | **25.32** | **0.8623** | **0.3094** | 0% |
+
+Paired per-view: MCMC − ADC = **−0.09 dB ± 0.45 (95% CI)** — *indistinguishable*.
+MCMC is better on **17/28** views and on median, SSIM and LPIPS; ADC wins the mean
+only because of a single −5.32 dB outlier view. With 28 held-out views we cannot
+resolve differences below ~0.45 dB, so no quality claim is warranted either way.
+
+**This is informative rather than disappointing.** It says the large gain we
+measured came from the *budget itself*, not from how the budget is allocated —
+consistent with the sparse-view overfitting explanation. MCMC is nonetheless the
+better default going forward on operational grounds: it removes `grad_threshold`
+(the main heuristic knob) and makes the budget explicit, which matters precisely
+because the budget turned out to be the critical hyper-parameter. API note: MCMC
+takes no `scene_scale` at init and needs the current LR at step time instead of
+`packed`; `tests/unit/test_strategy_api.py` pins that on CPU since the mismatch
+otherwise only appears minutes into a GPU run.
+
 ### Pose refinement does not help here (negative result)
 `train.pose_optimization` is implemented: a learnable SE(3) delta per TRAINING
 camera (BARF-style), identity-initialised, with held-out poses deliberately NOT

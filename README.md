@@ -64,6 +64,7 @@ each group has its own SfM solution, held-out split and resolution.
 | ⭐ **cap 375 k (recommended)** | `..._hidetail_cap375k` | **24.92** | 25.13 | **0.862** | 0.313 | **0 %** | **0.36 M** | **89 MB** |
 | cap 190 k | `..._hidetail_cap190k` | 24.86 | **25.18** | 0.856 | 0.338 | **0 %** | 0.19 M | 48 MB |
 | + pose refinement ❌ | `..._hidetail_poseopt` | 23.94 | 24.40 | 0.829 | 0.330 | 0 % | 0.35 M | 88 MB |
+| MCMC densification (≈tie) | `..._hidetail_mcmc375k` | 24.83 | **25.32** | 0.862 | **0.309** | 0 % | 0.37 M | 91 MB |
 
 **Multi-clip dataset** (2 clips, 33 test views) — appearance embeddings
 

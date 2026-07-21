@@ -73,6 +73,7 @@ cap 750\,k                     &   653\,831 & 24.32 & 25.10 & 0.8596 & \textbf{0
 \textbf{cap 375\,k (recommended)} & \textbf{358\,878} & \textbf{24.92} & 25.13 & \textbf{0.8619} & 0.3132 & \textbf{0\,\%} \\
 cap 190\,k                     &   192\,475 & 24.86 & \textbf{25.18} & 0.8559 & 0.3382 & \textbf{0\,\%} \\
 $+$ pose refinement            &   354\,250 & 23.94 & 24.40 & 0.8290 & 0.3301 & 0\,\% \\
+MCMC densification, cap 375\,k &   365\,497 & 24.83 & \textbf{25.32} & \textbf{0.8623} & \textbf{0.3094} & 0\,\% \\
 \midrule
 \multicolumn{7}{l}{\emph{multi-clip dataset (2 clips), 33 test views}}\\
 cap 3.0\,M                     & 2\,502\,172 & 21.36 & 21.23 & 0.8243 & 0.3460 & 33\,\% \\
@@ -140,6 +141,20 @@ report both operating points rather than collapsing them into one recommendation
         poses must not be optimised) then misaligns the scene slightly relative to
         the evaluation cameras.
 \end{itemize}
+
+\paragraph{Densification strategy.}
+Replacing the heuristic adaptive density control with 3DGS-MCMC
+\cite{kheradmand2024mcmc} at the same 375\,k budget changes nothing measurable:
+the paired per-view difference is $-0.09 \pm 0.45$\,dB (95\,\% CI over 28 held-out
+views), i.e.\ indistinguishable. MCMC is ahead on 17 of 28 views and on median,
+SSIM and LPIPS; the heuristic wins the mean only through a single $-5.32$\,dB
+outlier. We therefore make no quality claim in either direction --- with 28 test
+views the experiment cannot resolve differences below roughly half a decibel. The
+result is nonetheless informative: it indicates the large gain in
+\S\ref{sec:capacity} came from the \emph{budget}, not from how the budget is
+allocated, which is what the sparse-view overfitting account predicts. MCMC remains
+preferable operationally, since it eliminates the gradient threshold and makes the
+budget an explicit target rather than an emergent ceiling.
 
 \paragraph{Two measurement bugs worth reporting.}
 Both would have silently corrupted conclusions. First, the blur filter scored
