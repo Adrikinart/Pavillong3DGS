@@ -44,8 +44,9 @@ class ExportStage(Stage):
         fmts = ctx.config.export.formats
 
         backend = get_backend(ctx.config.train.backend)
-        # 2DGS renders depth on GPU for the mesh; splat .ply export is CPU-only.
-        mesh_device = "cuda" if ctx.config.train.backend == "2dgs" else "cpu"
+        # Mesh export rasterizes depth and therefore needs CUDA for every backend
+        # that supports it (2DGS and now gsplat); the .ply export itself is CPU-only.
+        mesh_device = "cuda" if hasattr(backend, "export_mesh") else "cpu"
         tctx = TrainContext(layout=ctx.layout, config=ctx.config,
                             train_cfg=ctx.config.train, train_run_id=tr,
                             device=mesh_device, logger=ctx.logger)

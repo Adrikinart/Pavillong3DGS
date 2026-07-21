@@ -387,6 +387,114 @@ class GsplatBackend(TrainingBackend):
                            n_gaussians=n_final, status=status)
 
     # ------------------------------------------------------------------ #
+    def export_mesh(self, ctx: TrainContext, checkpoint: Path, out: Path, *,
+                    voxel: float | None = None, sdf_trunc_scale: float = 5.0,
+                    depth_trunc: float = 3.0, alpha_min: float = 0.5) -> "Path | None":
+        """TSDF-fuse the model's rendered depth over the training cameras -> mesh.
+
+        The subject here is a carved relief, so a triangle mesh is often more useful
+        than a radiance field. 2DGS is the principled route to surfaces, but it fails
+        on this single-sided capture (flat renders, PSNR ~13), so we fuse depth from
+        the 3D Gaussian model instead. Caveat worth stating: volumetric primitives
+        give a *biased* expected depth — a Gaussian straddling a surface contributes
+        mass in front of and behind it — so this mesh is geometrically softer than a
+        surface-aligned method would produce.
+
+        Two details matter for usable output:
+        * **Alpha masking.** Where little opacity accumulates (background, unobserved
+          regions) the composited depth is meaningless, not merely noisy. Those pixels
+          are dropped rather than fused, otherwise they drag spurious surfaces into
+          the volume.
+        * **Scale-aware voxels.** The scene lives in normalized units, so a fixed
+          voxel size is meaningless across captures; it is derived from the robust
+          point extent unless overridden.
+        """
+        try:
+            import open3d as o3d
+        except Exception as e:  # noqa: BLE001
+            ctx.logger.warning("open3d not available; skipping mesh export: %s", e)
+            return None
+        import torch
+        import gsplat
+
+        from .gaussians import create_splats
+
+        if not torch.cuda.is_available():
+            ctx.logger.warning("mesh export needs CUDA to rasterize depth; skipping")
+            return None
+        device = "cuda"
+        ds = ColmapDataset(ctx.layout, "train", downscale=1)
+        params, _ = create_splats(ds.points, ds.point_colors, ctx.train_cfg.sh_degree, device)
+        load_checkpoint(checkpoint, params, {})
+
+        near = 0.01
+        if ctx.layout.normalize_transform.exists():
+            import json
+            near = max(1e-3, float(json.loads(ctx.layout.normalize_transform.read_text())
+                                   .get("near", 0.01)) * 0.5)
+
+        if voxel is None:
+            lo, hi = np.percentile(ds.points, 2, axis=0), np.percentile(ds.points, 98, axis=0)
+            voxel = max(float(np.max(hi - lo)) / 512.0, 1e-4)   # ~512 voxels across
+        sdf_trunc = sdf_trunc_scale * voxel
+        ctx.logger.info("TSDF: voxel=%.5f sdf_trunc=%.5f over %d cameras",
+                        voxel, sdf_trunc, len(ds.samples))
+
+        vol = o3d.pipelines.integration.ScalableTSDFVolume(
+            voxel_length=voxel, sdf_trunc=sdf_trunc,
+            color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
+
+        n_used = 0
+        for s in ds.samples:
+            vm = torch.from_numpy(s.viewmat.astype(np.float32)).to(device)
+            K = torch.from_numpy(s.K.astype(np.float32)).to(device)
+            with torch.no_grad():
+                rgb, depth, alphas, _ = self._rasterize(
+                    gsplat, params, vm, K, s.width, s.height,
+                    ctx.train_cfg.sh_degree, near, 1e10, with_depth=True)
+            rgb_np = rgb[0].clamp(0, 1).cpu().numpy()
+            depth_np = depth[0, ..., 0].cpu().numpy()
+            alpha_np = alphas[0, ..., 0].cpu().numpy()
+            # drop pixels the model is not confident about — their depth is not a
+            # noisy surface estimate, it is no estimate at all
+            depth_np = np.where(alpha_np >= alpha_min, depth_np, 0.0).astype(np.float32)
+            if float((depth_np > 0).mean()) < 0.01:
+                continue
+
+            rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+                o3d.geometry.Image((rgb_np * 255).astype(np.uint8)),
+                o3d.geometry.Image(depth_np),
+                depth_scale=1.0, depth_trunc=depth_trunc, convert_rgb_to_intensity=False)
+            intr = o3d.camera.PinholeCameraIntrinsic(
+                s.width, s.height, s.K[0, 0], s.K[1, 1], s.K[0, 2], s.K[1, 2])
+            vol.integrate(rgbd, intr, s.viewmat.astype(np.float64))
+            n_used += 1
+
+        if n_used == 0:
+            ctx.logger.warning("no camera produced usable depth; skipping mesh")
+            return None
+
+        mesh = vol.extract_triangle_mesh()
+        mesh.compute_vertex_normals()
+        # keep only the largest connected component: TSDF of a partially observed
+        # scene leaves small floating shells behind
+        try:
+            idx, counts, _ = mesh.cluster_connected_triangles()
+            idx = np.asarray(idx); counts = np.asarray(counts)
+            if len(counts):
+                mesh.remove_triangles_by_mask(idx != int(counts.argmax()))
+                mesh.remove_unreferenced_vertices()
+        except Exception as e:  # noqa: BLE001
+            ctx.logger.warning("mesh component filtering skipped: %s", e)
+
+        out.parent.mkdir(parents=True, exist_ok=True)
+        o3d.io.write_triangle_mesh(str(out), mesh)
+        ctx.logger.info("mesh: %d verts, %d tris from %d/%d cameras -> %s",
+                        len(mesh.vertices), len(mesh.triangles), n_used, len(ds.samples),
+                        out.name)
+        return out
+
+    # ------------------------------------------------------------------ #
     def export_ply(self, ctx: TrainContext, checkpoint: Path, out: Path) -> Path:
         import torch
         state = torch.load(checkpoint, map_location="cpu", weights_only=False)
