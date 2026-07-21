@@ -186,7 +186,8 @@ Same data, same regularizers, same 30k iterations; only `cap_max` changes:
 |---|---:|---:|---:|---:|---:|---:|
 | 1.5M | 1,244,835 | 23.08 | 24.48 | 0.8461 | 0.3096 | 11% |
 | 750k |   653,831 | 24.32 | 25.10 | 0.8596 | **0.3025** | 11% |
-| **375k** | **358,878** | **24.92** | **25.13** | **0.8619** | 0.3132 | **0%** |
+| **375k** | **358,878** | **24.92** | 25.13 | **0.8619** | 0.3132 | **0%** |
+| 190k |   192,475 | 24.86 | **25.18** | 0.8559 | 0.3382 | **0%** |
 
 Cutting the budget 4x gained **1.8 dB PSNR**, improved SSIM, **eliminated the
 catastrophic-view tail (11% -> 0%)** and shrank the model 3.5x (295 MB -> ~90 MB).
@@ -198,8 +199,10 @@ views; a single-sided capture supplies little, so every surplus Gaussian is a
 parameter free to sit at a wrong depth while still reproducing the training images.
 Capacity buys solutions that fit training views and fail on held-out ones.
 
-**LPIPS turns upward between 750k and 375k** while PSNR/SSIM keep improving — the
-point where capacity begins limiting fine perceptual detail. For perceptual fidelity
+The curve turns rather than running away: at 190k PSNR and SSIM both fall back, so
+375k is a genuine optimum and not just the smallest point tested. **LPIPS bottoms at
+750k** and worsens monotonically as capacity shrinks — perceptual detail wants
+capacity while accuracy/generalisation want less. For perceptual fidelity
 of the carving, 750k is the better operating point; for accuracy and robustness,
 375k. Recommended deliverable is now `gsplat_hidetail_cap375k`.
 

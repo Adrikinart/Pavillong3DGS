@@ -105,9 +105,16 @@ changes:
 | 3.0 M* | 2.50 M | 21.4* | — | 0.824* | 0.346* | 33 %* |
 | 1.5 M | 1.24 M | 23.08 | 24.48 | 0.846 | 0.310 | 11 % |
 | 750 k | 0.65 M | 24.32 | 25.10 | 0.860 | **0.303** | 11 % |
-| **375 k** | **0.36 M** | **24.92** | **25.13** | **0.862** | 0.313 | **0 %** |
+| ⭐ **375 k** | **0.36 M** | **24.92** | 25.13 | **0.862** | 0.313 | **0 %** |
+| 190 k | 0.19 M | 24.86 | **25.18** | 0.856 | 0.338 | **0 %** |
 
 <sub>*the 3.0 M row is from the multi-clip dataset, where the doubling experiment was run.</sub>
+
+<p align="center">
+  <img src="docs/assets/capacity_curve.png" width="960" alt="Gaussian capacity sweep"><br>
+  <em>Five capacity points, everything else held fixed. PSNR and SSIM peak at 375 k;
+  LPIPS bottoms at 750 k; the catastrophic-view tail vanishes at ≤375 k.</em>
+</p>
 
 Cutting the budget 4× raised PSNR by **1.8 dB**, improved SSIM, **eliminated the
 catastrophic-view tail entirely**, and shrank the model **3.5×**.
@@ -124,10 +131,12 @@ multi-clip model was starved of capacity — and *raised* `cap_max` to 3.0 M. It
 worse, which falsified the hypothesis and pointed the other way. Testing the
 reversed direction produced the biggest quality gain since the resolution fix.
 
-Note **LPIPS turns upward** between 750 k and 375 k even as PSNR/SSIM keep improving:
-the point where capacity starts limiting fine perceptual detail. If you care most
-about perceptual fidelity of the carving, 750 k is arguably the better operating
-point; for accuracy and robustness, 375 k.
+The curve genuinely turns rather than running away: at 190 k both PSNR and SSIM fall
+back, so **375 k is the optimum**, not merely the smallest thing tested. The metrics
+disagree in a way that is itself informative — **LPIPS bottoms at 750 k** and degrades
+monotonically as capacity shrinks, i.e. perceptual detail wants capacity while
+accuracy and generalisation want less. Pick 375 k for accuracy and robustness, 750 k
+if perceptual fidelity of the carving matters most.
 
 **Aggregate means hide the failure structure.** Per-view analysis is what diagnosed
 the biggest win: every catastrophic view was an extreme close-up at grazing
