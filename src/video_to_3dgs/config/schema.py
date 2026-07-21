@@ -192,7 +192,8 @@ class TrainCfg(_Base):
     l1_lambda: float = 0.8
     use_masks: bool = True
     mixed_precision: bool = True
-    pose_optimization: bool = False
+    pose_optimization: bool = False   # learn per-training-camera SE(3) deltas
+    pose_lr: float = 1.0e-5           # small: poses should refine, not wander
     # Per-image appearance latents (GLO / NeRF-W style) decoded to a global affine
     # colour transform. Enable when merging clips with differing auto-exposure/WB.
     appearance_embedding: bool = False

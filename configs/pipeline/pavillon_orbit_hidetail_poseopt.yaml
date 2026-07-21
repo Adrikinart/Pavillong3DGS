@@ -1,0 +1,97 @@
+# Pose refinement on top of the best model (cap 375k).
+#
+# SfM poses are treated as exact by 3DGS, but on a low-overlap capture they are not,
+# and a pose error is indistinguishable from a geometry error to a photometric loss.
+# This learns a small SE(3) delta per TRAINING camera (BARF-style), initialised at
+# identity so training starts from exactly the SfM solution.
+#
+# Held-out poses are deliberately NOT refined - optimising a test camera's pose would
+# fit the evaluation image and inflate the metric. The corollary is that this can only
+# help held-out numbers if it improves the SCENE, not if it merely re-aligns training
+# cameras onto their own images. That makes it a real test rather than a free win.
+#
+object_name: pavillon_hidetail
+capture_mode: orbit
+profile:
+  name: rtxpro
+  nodelist: GPURACK2
+videos:
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/Pavillon/IMG_9647.MOV
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 4.0
+  max_frames: 400
+  min_frames: 60
+  resize_long_edge: 2560       # source is 3840x2160; keep the fine carving
+
+filter_frames:
+  enabled: true
+  blur_var_min: 50.0
+
+generate_masks:
+  enabled: false
+
+run_colmap:
+  matcher: exhaustive
+  mapper_backend: glomap       # 181/193 vs 82 for incremental COLMAP on this capture
+  camera_model: OPENCV
+  single_camera: true
+  sequential_overlap: 15
+
+validate_colmap:
+  minimum_registration_ratio: 0.60
+  hard_fail: false
+
+normalize_scene:
+  method: points
+
+split_dataset:
+  strategy: pose_aware
+
+train:
+  backend: gsplat
+  train_run_id: gsplat_hidetail_poseopt
+  max_iterations: 30000
+  sh_degree: 3
+  use_masks: false
+  pose_optimization: true
+  pose_lr: 1.0e-5
+  antialiasing: true
+  checkpoint_interval: 5000
+  validation_interval: 1000
+  val_render_count: 4
+  densification:
+    strategy: default
+    start_iteration: 500
+    stop_iteration: 15000
+    interval: 100
+    grad_threshold: 0.0003
+    opacity_reset_interval: 3000
+    prune_opacity: 0.005
+    # Kept at the A3 run's value so resolution/frame-count/min_opacity are the only
+    # changed variables (clean comparison), and so the run fits a 16 GB card.
+    cap_max: 375000
+  bounds:
+    enabled: true
+    margin: 0.5
+    prune_every: 500
+  floater:
+    enabled: true
+    max_scale_frac: 0.15
+    min_opacity: 0.005         # was 0.02 — the measured PSNR cost
+    prune_every: 500
+  depth_prior:
+    enabled: true              # ~free in PSNR and it increases floater removal
+    model: depth-anything/Depth-Anything-V2-Small-hf
+    lambda_depth: 0.1
+    start_iter: 2000
+    loss: pearson
+
+report:
+  enabled: true
+  figures: [training_curves, qualitative, gaussian_stats, per_view, gaussian_centers]
+  videos: [orbit, progression]
+  orbit_frames: 150
+  orbit_elevation_deg: 15.0
+  video_fps: 30

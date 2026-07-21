@@ -1,0 +1,217 @@
+% !TeX root = main.tex
+%
+% Related work for the Pavillon 3DGS report. Organised by the axes on which our
+% capture is hard, so each family is judged by whether it addresses OUR failure
+% modes rather than by general popularity.
+
+\section{Related Work}
+\label{sec:related}
+
+Our capture is adversarial along four specific axes: it is \emph{single-sided}
+(the camera never orbits the object), \emph{low-parallax}, \emph{close-range} on a
+\emph{near-planar relief}, and it is assembled from handheld clips with
+independent auto-exposure. We therefore organise the literature by those axes and,
+where we tested a family, report what it did on this data.
+
+%---------------------------------------------------------------------------
+\subsection{Primitive-based radiance fields and frameworks}
+
+3DGS \cite{kerbl2023gaussian} replaced NeRF's ray-marched implicit field
+\cite{mildenhall2020nerf} with explicit anisotropic primitives rasterised by EWA
+splatting \cite{zwicker2001ewa,zwicker2001surface}, trading a continuous
+representation for real-time rendering and a far cheaper optimisation. Two open
+implementations now dominate practice: \texttt{gsplat} \cite{ye2024gsplat}, a
+CUDA-backed library exposing the rasteriser and density-control strategies, and
+Nerfstudio \cite{tancik2023nerfstudio}, whose \emph{Splatfacto} model wraps
+\texttt{gsplat} with a configurable training pipeline. We build directly on the
+packaged \texttt{gsplat} APIs rather than on Nerfstudio: the pipeline needs
+per-stage checkpointing, preemption handling and fingerprint-driven reruns on a
+Slurm cluster, which is orchestration Nerfstudio does not target, and avoiding the
+Nerfstudio dependency also avoids \texttt{tiny-cuda-nn}, a known pain point on
+Blackwell (\texttt{sm\_120}).
+
+Anti-aliasing is orthogonal but relevant to close-range capture: Mip-Splatting
+\cite{yu2024mipsplatting} adds 3D smoothing and a 2D Mip filter so primitives
+observed at sampling rates far from training do not produce erosion or dilation
+artefacts. Our capture varies sharply in scale between contextual and extreme
+close-up views, so we enable \texttt{gsplat}'s antialiased rasterisation mode
+throughout.
+
+%---------------------------------------------------------------------------
+\subsection{Density control: from heuristics to sampling}
+\label{sec:rw-density}
+
+Vanilla 3DGS grows the model with a hand-tuned adaptive density control (ADC):
+clone or split wherever the view-space positional gradient exceeds a threshold,
+periodically reset opacities, prune the transparent. The thresholds are heuristic
+and, as we found empirically (\S\ref{sec:theory} and our capacity experiments),
+their interaction with scene scale is fragile.
+
+Two lines of work replace or restructure this. \textbf{Structured
+representations} anchor primitives to a coarser scaffold: Scaffold-GS
+\cite{lu2024scaffoldgs} distributes local Gaussians around anchor points and
+predicts their attributes on the fly from view direction and distance, which
+suppresses the redundant floaters that unconstrained ADC produces; Octree-GS
+\cite{ren2024octreegs} extends this with an LOD hierarchy so the level of detail
+matches the observation scale.
+
+\textbf{3DGS-MCMC} \cite{kheradmand2024mcmc} is the more fundamental reframing and
+the most relevant to our findings. It reinterprets the Gaussians as samples drawn
+from a distribution over scenes, turns the optimiser into Stochastic Gradient
+Langevin Dynamics by injecting noise, and rewrites cloning and pruning as
+\emph{state transitions that approximately preserve sample probability} — replacing
+``dead'' primitives by relocating them onto live ones rather than heuristically
+splitting. Crucially, it reports better reconstructions \emph{at an identical
+Gaussian budget}, and it makes the budget an explicit parameter rather than an
+emergent consequence of thresholds.
+
+This connects directly to our own result. We measured a monotone preference for
+\emph{fewer} primitives on this capture: reducing \texttt{cap\_max} from 1.5\,M to
+375\,k raised test PSNR by 1.8\,dB, improved SSIM, and eliminated the
+catastrophic-view tail, while doubling it to 3.0\,M degraded every metric. The
+compaction literature — Compact-3DGS \cite{lee2024compact3dgs}, GaussianSpa
+\cite{zhang2024gaussianspa} — reports that aggressive pruning preserves or improves
+quality while shrinking models by large factors, which is consistent, though that
+work is usually motivated by memory rather than generalisation. The sparse-view
+literature makes the generalisation argument explicitly: DropGaussian
+\cite{park2025dropgaussian} randomly removes primitives during training as a
+\emph{structural regulariser} for few-view inputs, and recent analysis quantifies
+\emph{co-adaptation} between primitives as a distinct sparse-view failure mode
+\cite{coadaptation2025}. Our capacity sweep is an independent, purely empirical
+instance of the same phenomenon, obtained without any architectural change: on a
+low-parallax capture, primitive count behaves as a regularisation hyper-parameter,
+not a quality dial. Adopting 3DGS-MCMC would be the principled next step, since it
+makes exactly this budget explicit.
+
+%---------------------------------------------------------------------------
+\subsection{Sparse and few-view reconstruction}
+
+When views are few or share little parallax, the photometric objective is
+underdetermined: many primitive configurations reproduce the training images while
+placing mass at wrong depths. The dominant remedy is to import geometry from a
+monocular depth network \cite{ranftl2022midas,yang2024depthanythingv2}, used
+scale-invariantly because such predictions are only defined up to an affine
+transform \cite{eigen2014depth}. FSGS \cite{zhu2024fsgs} densifies guided by depth
+and proximity; SparseGS \cite{xiong2024sparsegs} combines depth with a
+diffusion-based score to remove background collapse; DNGaussian
+\cite{li2024dngaussian} contributes global-local depth normalisation so that
+absolute depth error does not dominate local shape. CoR-GS \cite{zhang2024corgs}
+takes a different route, training two models and using their disagreement to
+identify unreliable geometry.
+
+We implement the depth-prior family (DepthAnything-v2 with a Pearson-correlation
+loss, \S\ref{sec:sparse}) and measure it honestly: on this capture the prior is
+\emph{nearly free} in PSNR terms (an ablation with it disabled recovers only
+0.26\,dB) and slightly \emph{increases} floater removal — but it is not what
+determines final quality. Resolution and capacity dominate it by a wide margin.
+This is a useful negative-ish result: depth priors are routinely presented as the
+answer to sparse-view degradation, yet on a capture whose views are numerous but
+badly distributed, the binding constraints were elsewhere.
+
+A newer direction sidesteps SfM entirely, initialising from learned stereo:
+DUSt3R \cite{wang2024dust3r} and VGGT \cite{wang2025vggt} regress dense geometry
+and poses directly, and InstantSplat \cite{fan2024instantsplat} couples such an
+initialisation to 3DGS for very sparse inputs. For our data the SfM stage was not
+the bottleneck once global mapping was used (below), so we did not pursue it;
+it remains the natural fallback for captures where COLMAP/GLOMAP fail outright.
+
+%---------------------------------------------------------------------------
+\subsection{Camera calibration and pose refinement}
+
+Incremental SfM \cite{schoenberger2016sfm} registers images greedily and can
+abandon weakly connected regions — exactly the regime of a low-overlap capture.
+Global SfM re-estimates all poses jointly; GLOMAP \cite{pan2024glomap} performs
+global rotation averaging followed by joint global positioning. Substituting
+GLOMAP for incremental COLMAP on identical features and matches raised
+registration from 82 to 181 of 193 images on our data, a $2.2\times$ coverage gain
+and the single largest early improvement we measured.
+
+Where poses remain inaccurate, they can be refined jointly with the scene, as in
+BARF \cite{lin2021barf}, whose central observation is that such optimisation must
+be coarse-to-fine to avoid poor local minima; COLMAP-Free 3DGS
+\cite{fu2024colmapfree} pushes this to joint pose-and-scene estimation without SfM
+at all. We implemented per-camera SE(3) refinement and found it \emph{harmful}
+here ($-1$\,dB): GLOMAP's poses were already sub-pixel (0.92\,px mean reprojection
+error), so there was no calibration error to recover, and refining only the
+training cameras — held-out poses must not be optimised, or the metric is
+contaminated — introduced a small relative misalignment between the reconstructed
+scene and the un-refined evaluation cameras. Pose refinement is a remedy for bad
+poses, and ours were not bad.
+
+%---------------------------------------------------------------------------
+\subsection{Surfaces, meshes and hybrid representations}
+
+A radiance field is not a surface, and our subject is a carved relief whose value
+is geometric. Several families address this. \textbf{Flattening the primitive}:
+2DGS \cite{huang20242dgs} replaces ellipsoids with oriented disks that are surface
+elements by construction, and SuGaR \cite{guedon2024sugar} regularises 3D Gaussians
+towards a surface before Poisson meshing. \textbf{Reformulating the depth or
+opacity}: Gaussian Opacity Fields \cite{yu2024gof} extracts level sets of an
+opacity field with Marching Tetrahedra, avoiding Poisson artefacts in unbounded
+scenes; PGSR \cite{chen2024pgsr} compresses Gaussians to planes with multi-view
+geometric consistency; RaDe-GS \cite{zhang2024radegs} derives a rasterised depth
+that is unbiased for the level set. \textbf{Hybrid supervision}: GSDF
+\cite{yu2024gsdf} runs a 3DGS branch and a neural SDF branch that supervise each
+other — the splatting branch's rendered depth guides SDF ray sampling, and the SDF
+in turn guides density control to grow primitives near the surface and prune those
+that drift off it. GSDF is the most attractive of these for our problem, because
+its density control is driven by a \emph{geometric} signal rather than a
+photometric gradient, which is precisely the signal our capture lacks.
+
+We evaluated 2DGS and report a clear negative result: it collapses to flat,
+featureless renders (PSNR $\approx$13) on this capture. The explanation is
+structural rather than incidental — a disk must recover an orientation as well as a
+position, and normals are constrained mainly by observing a surface from multiple
+directions, which a single-sided capture does not supply. The added constraint
+removes degrees of freedom the photometric loss was using without supplying the
+multi-view evidence needed to fix the rest. We therefore extract geometry by
+TSDF-fusing \cite{curless1996tsdf} the depth composited by the \emph{3D} Gaussian
+model, accepting the known bias of volumetric primitives, and obtain a usable mesh
+of the panel. GSDF or GOF would be the principled improvements.
+
+%---------------------------------------------------------------------------
+\subsection{Appearance variation across captures}
+
+Merging clips is the cheapest way to buy coverage, but each handheld clip carries
+its own auto-exposure and white-balance response, and 3DGS has no parameter
+expressing ``same radiance, different camera response''. NeRF-W
+\cite{martinbrualla2021nerfw} introduced per-image appearance latents optimised
+jointly with the scene, in the GLO style \cite{bojanowski2018glo}. The idea has
+since been ported to splatting: Splatfacto-W \cite{xu2024splatfactow} adds
+per-Gaussian neural colour features, per-image appearance embeddings and a
+spherical-harmonic background to Nerfstudio's Splatfacto; WildGaussians
+\cite{kulhanek2024wildgaussians} combines appearance modelling with DINO features
+for occlusion robustness. A lighter-weight alternative now standard in Nerfstudio
+is the bilateral grid of \citet{wang2024bilateral}, which learns a smooth
+low-resolution 3D colour-transform grid per image — more expressive than a global
+affine map while still spatially constrained.
+
+We implement the low-capacity end of this spectrum deliberately: a per-image latent
+decoded to a \emph{global} affine colour transform. The capacity argument matters
+more than the architecture. A per-pixel correction could memorise each training
+view and destroy the multi-view constraint; our transform applies identically at
+every pixel, so it commutes with any spatial permutation of the image and therefore
+carries exactly zero spatial information. It can absorb exposure, gain and
+white-balance drift and provably nothing else. A bilateral grid sits between these
+extremes and would be the natural upgrade if per-clip vignetting or spatially
+varying response mattered.
+
+Our merge nevertheless underperformed the best single-clip model. Diagnosing it
+required first fixing a measurement bug — evaluation must apply the appearance
+correction, and must do so using a latent that does not depend on the held-out
+image, or the metric is either penalised or contaminated. With per-clip latents the
+merged model reaches 22.0\,dB against 24.9\,dB single-clip. The residual gap is not
+photometric: the second clip enlarges the reconstructed volume while contributing
+few views, and the capacity effect of \S\ref{sec:rw-density} then dominates.
+
+%---------------------------------------------------------------------------
+\subsection{Positioning}
+
+Relative to this literature our contribution is not a new representation but a
+measured account of \emph{which} interventions matter for one well-characterised
+hard capture, with negative results reported alongside positive ones. Global SfM
+and resolution dominated; capacity reduction was the largest late gain; depth
+priors were nearly free but not decisive; 2DGS, multi-clip merging and pose
+refinement each degraded quality for reasons we can attribute. The methods we did
+not implement — 3DGS-MCMC for principled budget control, GSDF or GOF for geometry,
+bilateral grids for appearance — are exactly the ones this evidence points to.

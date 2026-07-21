@@ -124,6 +124,17 @@ class GsplatBackend(TrainingBackend):
                      len(train_ds), cfg.appearance_dim, len(clip_to_train_idx),
                      ", ".join(f"{k}({len(v)})" for k, v in sorted(clip_to_train_idx.items())))
 
+        # Per-camera pose refinement. Like the appearance latents these are
+        # per-IMAGE parameters, so they stay out of `optimizers`, which the
+        # densification strategy owns and indexes per-Gaussian.
+        pose_model = pose_opt = None
+        if cfg.pose_optimization:
+            from .pose_opt import PoseOptimizer
+            pose_model = PoseOptimizer(len(train_ds)).to(device)
+            pose_opt = torch.optim.Adam(pose_model.parameters(), lr=cfg.pose_lr)
+            log.info("pose optimization ON: %d training cameras (lr=%.1e); "
+                     "held-out poses are NOT refined", len(train_ds), cfg.pose_lr)
+
         # densification strategy
         dcfg = cfg.densification
         strategy = gsplat.DefaultStrategy(
@@ -159,6 +170,8 @@ class GsplatBackend(TrainingBackend):
             if app_model is not None:
                 e["appearance"] = {k: v.detach().cpu()
                                    for k, v in app_model.state_dict().items()}
+            if pose_model is not None:
+                e["pose_deltas"] = pose_model.deltas.detach().cpu()
             return e
 
         # resume
@@ -239,6 +252,8 @@ class GsplatBackend(TrainingBackend):
             gt = gt.to(device)
             mask_t = mask.to(device) if (cfg.use_masks and mask is not None) else None
             vm, K, w, h = train_ds.camera_tensors(idx, device)
+            if pose_model is not None:
+                vm = pose_model(idx, vm)          # identity at init
             sh_now = min(cfg.sh_degree, step // 1000)
 
             want_depth = depth_bank is not None and step >= cfg.depth_prior.start_iter
@@ -274,6 +289,9 @@ class GsplatBackend(TrainingBackend):
             if app_opt is not None:
                 app_opt.step()
                 app_opt.zero_grad(set_to_none=True)
+            if pose_opt is not None:
+                pose_opt.step()
+                pose_opt.zero_grad(set_to_none=True)
             means_sched.step()   # decay position LR so Gaussians settle (sharpness)
             # Densify/prune — but FREEZE growth once the cap is reached instead of
             # crashing. gsplat's DefaultStrategy has no built-in cap, so gate it here.
@@ -316,6 +334,8 @@ class GsplatBackend(TrainingBackend):
                     "sh_degree": sh_now, "iters_per_s": round(ips, 2),
                     "depth_loss": depth_loss_val,
                     "appearance_drift": app_model.drift() if app_model is not None else 0.0,
+                    "pose_rot_deg": pose_model.magnitude()[0] if pose_model is not None else 0.0,
+                    "pose_trans": pose_model.magnitude()[1] if pose_model is not None else 0.0,
                 })
 
             # validation
@@ -389,7 +409,8 @@ class GsplatBackend(TrainingBackend):
     # ------------------------------------------------------------------ #
     def export_mesh(self, ctx: TrainContext, checkpoint: Path, out: Path, *,
                     voxel: float | None = None, sdf_trunc_scale: float = 5.0,
-                    depth_trunc: float = 3.0, alpha_min: float = 0.5) -> "Path | None":
+                    depth_trunc: float = 3.0, alpha_min: float = 0.5,
+                    crop_margin: float | None = 0.10) -> "Path | None":
         """TSDF-fuse the model's rendered depth over the training cameras -> mesh.
 
         The subject here is a carved relief, so a triangle mesh is often more useful
@@ -476,6 +497,19 @@ class GsplatBackend(TrainingBackend):
 
         mesh = vol.extract_triangle_mesh()
         mesh.compute_vertex_normals()
+
+        # Crop to the object. Fusing every training camera also reconstructs the
+        # surrounding wall and floor, which is not what the mesh is for; the robust
+        # (2-98 percentile) point extent plus a margin isolates the subject.
+        if crop_margin is not None:
+            lo = np.percentile(ds.points, 2, axis=0)
+            hi = np.percentile(ds.points, 98, axis=0)
+            pad = crop_margin * (hi - lo)
+            n_before = len(mesh.vertices)
+            mesh = mesh.crop(o3d.geometry.AxisAlignedBoundingBox(
+                min_bound=(lo - pad), max_bound=(hi + pad)))
+            ctx.logger.info("mesh cropped to object box (+%.0f%% margin): %d -> %d verts",
+                            100 * crop_margin, n_before, len(mesh.vertices))
         # keep only the largest connected component: TSDF of a partially observed
         # scene leaves small floating shells behind
         try:

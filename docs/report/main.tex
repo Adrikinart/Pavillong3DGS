@@ -1,7 +1,7 @@
-% Standalone wrapper so docs/report/theory.tex can be compiled and checked on its
-% own, and dropped into a larger report with \input{theory} unchanged.
+% Standalone wrapper so the report sections can be compiled and checked on their
+% own, and dropped into a larger document unchanged.
 %
-%   latexmk -pdf main.tex        (or: pdflatex main && bibtex main && pdflatex main x2)
+%   latexmk -pdf main.tex   (or: pdflatex main && bibtex main && pdflatex main x2)
 \documentclass[11pt,a4paper]{article}
 
 \usepackage[utf8]{inputenc}
@@ -11,6 +11,7 @@
 \usepackage[margin=2.5cm]{geometry}
 \usepackage{hyperref}
 \usepackage{booktabs}
+\usepackage{natbib}   % \citet in related_work
 
 \title{Video to 3D Gaussian Splatting:\\Reconstructing a Carved Ceiling Panel}
 \author{Adrien Kinart}
@@ -29,9 +30,10 @@ bounding with floater suppression, and per-image appearance modelling for
 multi-clip merging.
 \end{abstract}
 
+\input{related_work}
 \input{theory}
 
-\bibliographystyle{plain}
+\bibliographystyle{plainnat}
 \bibliography{references}
 
 \end{document}

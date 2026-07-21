@@ -178,6 +178,26 @@ views while enlarging the reconstructed volume (point extent [2.53, 9.61, 8.7]),
 
 Conclusion: keep `gsplat_hidetail_30k` as the deliverable.
 
+### Pose refinement does not help here (negative result)
+`train.pose_optimization` is implemented: a learnable SE(3) delta per TRAINING
+camera (BARF-style), identity-initialised, with held-out poses deliberately NOT
+refined — optimising a test camera's pose fits the evaluation image and inflates the
+metric. Measured on the best model (cap 375k), it is harmful:
+
+| | PSNR | SSIM | LPIPS |
+|---|---:|---:|---:|
+| cap375k baseline | **24.92** | **0.8619** | **0.3132** |
+| + pose refinement | 23.94 | 0.8290 | 0.3301 |
+
+The deltas barely moved — mean **0.036 deg** rotation and **0.0007** translation,
+roughly one pixel at this resolution — yet cost ~1 dB. That is the failure mode
+predicted when it was implemented: the refinement re-aligned training cameras onto
+their own images, while held-out cameras keep their original poses, so the scene
+drifts slightly relative to them. GLOMAP's poses were already **0.92 px** mean
+reprojection error, i.e. there was no calibration error to recover. Pose refinement
+is a remedy for bad poses; ours are not bad. Keep `pose_optimization: false` unless
+SfM reprojection error is poor.
+
 ### Gaussian capacity is a REGULARIZER — cutting it 4x is the largest late-stage win
 Having falsified dilution (below), we tested the reverse on the deliverable dataset.
 Same data, same regularizers, same 30k iterations; only `cap_max` changes:
