@@ -48,6 +48,7 @@ appearance embeddings.
 | A3 ablation (depth off) | `pavillon_orbit_reg_nodepth` | 22.6 | 0.798 | 0.294 | 1.23 M | 306 MB |
 | ⭐ **High-detail (recommended)** | `pavillon_orbit_hidetail` | 23.1 | **0.846** | 0.310 | 1.24 M | 309 MB |
 | Multi-clip + appearance | `pavillon_multiclip` | 22.0 | 0.833 | 0.342 | 1.23 M | 304 MB |
+| Multi-clip, 2× budget | `pavillon_multiclip_cap3m` | 21.4 | 0.824 | 0.346 | 2.50 M | 508 MB |
 
 > ⚠️ **These rows are not all directly comparable.** The high-detail and multi-clip
 > models are separate datasets with their own COLMAP, their own held-out splits and
@@ -86,6 +87,13 @@ Two cases where this mattered concretely:
    Fixing it gave **+3.02 dB** (→ 22.0). The tell was that **PSNR collapsed while
    SSIM barely moved**, which is the signature of a global photometric offset rather
    than broken geometry.
+
+3. **More capacity made the model worse.** We hypothesised the multi-clip deficit was
+   Gaussian-budget dilution over a 2.04× larger volume and tested it by doubling
+   `cap_max` to 3.0 M. Both clips got *worse* and catastrophic views rose 24 % → 33 %.
+   With low parallax the reconstruction is underdetermined, so extra Gaussians mainly
+   add ways to fit the training views with geometry that does not generalise —
+   **`cap_max` behaves as a regularizer here, not a quality dial.**
 
 **Aggregate means hide the failure structure.** Per-view analysis is what diagnosed
 the biggest win: every catastrophic view was an extreme close-up at grazing

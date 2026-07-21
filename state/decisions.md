@@ -176,10 +176,36 @@ previously had the entire Gaussian budget to itself. The clips are co-located
 views while enlarging the reconstructed volume (point extent [2.53, 9.61, 8.7]), so
 1.5M Gaussians now cover more scene.
 
-Conclusion: keep `gsplat_hidetail_30k` as the deliverable, but the multi-clip route
-is viable rather than dead — the obvious untested fix is to raise
-`densification.cap_max` in proportion to the enlarged volume, since the failure is
-budget dilution, not appearance and not SfM.
+Conclusion: keep `gsplat_hidetail_30k` as the deliverable.
+
+### The budget-dilution hypothesis is FALSIFIED (cap_max experiment)
+The reasoning above suggested the residual ~1 dB was Gaussian-budget dilution over
+the 2.04x larger merged volume, and predicted that scaling `cap_max` 1.5M -> 3.0M
+would let the original clip's views recover. `gsplat_multiclip_cap3m` tested exactly
+that, with every other setting identical. **The prediction was wrong, and in the
+opposite direction:**
+
+| multi-clip | Gaussians | test PSNR | SSIM | median | <18 dB | img_9647 | img_9649 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| cap 1.5M | 1.23 M | **22.03** | **0.833** | 22.82 | 24 % | 21.81 | 23.68 |
+| cap 3.0M | 2.50 M | 21.36 | 0.824 | 21.23 | **33 %** | **21.11** | **23.15** |
+
+Doubling the budget made **both** clips worse and raised the catastrophic-view rate
+from 24% to 33%. So the multi-clip deficit is not dilution — capacity was never the
+binding constraint.
+
+**Interpretation: this is sparse-view overfitting, and it is theoretically expected.**
+The compositing model is underdetermined when views share little parallax — depth is
+constrained only by *disagreement* between views, and a single-sided capture supplies
+little. Every extra Gaussian is another parameter that can sit at a wrong depth while
+still reproducing the training images, so added capacity enlarges the space of
+solutions that fit training views without generalising. Held-out views punish that,
+which is precisely what the numbers show.
+
+**Guidance reversed:** for low-parallax captures, capacity should be *constrained*,
+not expanded. `cap_max` is a regularizer here, not a quality dial. The untested
+follow-up is the opposite experiment — `cap_max` *below* 1.5M — and the same caution
+applies to the single-clip model. Do not raise `cap_max` when merging clips.
 
 ## Resolution/coverage beats regularizer tuning (high-detail run)
 Per-view analysis of the A3 model showed every catastrophic held-out view

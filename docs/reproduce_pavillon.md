@@ -37,11 +37,13 @@ Everything below is driven by two config files; no code edits are needed.
 > is scored unfairly.**
 >
 > A modest regression does remain (median 24.48 → 22.82; catastrophic views 11 % →
-> 24 %). The per-clip split localises it: the *added* clip's views score fine
-> (img_9649 mean 23.68) while the *original* clip's degrade (img_9647 21.81) — the
-> 1.5 M Gaussian budget now covers a larger volume. The untested fix is to raise
-> `densification.cap_max` with the volume; the failure is budget dilution, not
-> appearance and not SfM.
+> 24 %). We hypothesised Gaussian-budget dilution over the 2.04× larger merged volume
+> and tested it: scaling `cap_max` 1.5 M → 3.0 M (`pavillon_multiclip_cap3m`) made
+> things **worse** — test 22.03 → 21.36, both clips down, catastrophic views 24 % →
+> 33 %. **Do not raise `cap_max` when merging clips.** With low parallax the problem
+> is underdetermined, so extra Gaussians mostly add ways to fit training views with
+> geometry that does not generalise: `cap_max` behaves as a regularizer, not a
+> quality dial.
 >
 > SfM also improved outright: **282/282 images registered (100 %)** with **152 792**
 > sparse points, versus 181/193 (94 %) and 80 913 at 1600px.
@@ -140,8 +142,9 @@ which `train.appearance_embedding` now handles — but merging IMG_9649 was meas
 and still produced a worse model (see the negative result above). Exposure was not
 the only obstacle: the second clip enlarges the reconstructed volume while adding
 few views, so the Gaussian budget is spread thinner. Merge clips only when they
-re-observe the *same* surfaces from new angles, and raise `densification.cap_max`
-if the merged volume grows.
+re-observe the *same* surfaces from new angles. Do **not** raise
+`densification.cap_max` to compensate for a larger merged volume — that was tested
+and made the result worse.
 
 IMG_9648 is unusable in any configuration — it is a weakly-connected walking clip
 that does not reconstruct.
