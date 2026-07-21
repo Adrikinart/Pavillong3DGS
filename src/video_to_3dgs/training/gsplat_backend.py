@@ -116,12 +116,18 @@ class GsplatBackend(TrainingBackend):
         clip_key = None
         if cfg.appearance_embedding:
             from .appearance import AppearanceModel, clip_key
-            app_model = AppearanceModel(len(train_ds), dim=cfg.appearance_dim).to(device)
+            if cfg.appearance_model == "bilateral":
+                from .bilateral_grid import BilateralGrid
+                app_model = BilateralGrid(len(train_ds), grid_w=cfg.bilateral_grid_wh,
+                                          grid_h=cfg.bilateral_grid_wh,
+                                          grid_l=cfg.bilateral_grid_luma).to(device)
+            else:
+                app_model = AppearanceModel(len(train_ds), dim=cfg.appearance_dim).to(device)
             app_opt = torch.optim.Adam(app_model.parameters(), lr=cfg.appearance_lr)
             for j, s in enumerate(train_ds.samples):
                 clip_to_train_idx.setdefault(clip_key(s.name), []).append(j)
-            log.info("appearance embeddings ON: %d images x %d dims across %d clip(s): %s",
-                     len(train_ds), cfg.appearance_dim, len(clip_to_train_idx),
+            log.info("appearance ON (%s): %d images across %d clip(s): %s",
+                     cfg.appearance_model, len(train_ds), len(clip_to_train_idx),
                      ", ".join(f"{k}({len(v)})" for k, v in sorted(clip_to_train_idx.items())))
 
         # Per-camera pose refinement. Like the appearance latents these are
@@ -285,7 +291,10 @@ class GsplatBackend(TrainingBackend):
                 vm = pose_model(idx, vm)          # identity at init
             sh_now = min(cfg.sh_degree, step // 1000)
 
-            want_depth = depth_bank is not None and step >= cfg.depth_prior.start_iter
+            want_normal = (cfg.normal_consistency.enabled
+                           and step >= cfg.normal_consistency.start_iter)
+            want_depth = (depth_bank is not None and step >= cfg.depth_prior.start_iter) \
+                or want_normal
             if want_depth:
                 rgb, depth_map, alphas, info = self._rasterize(
                     gsplat, params, vm, K, w, h, sh_now, near, far, with_depth=True)
@@ -307,6 +316,27 @@ class GsplatBackend(TrainingBackend):
                     dl = pearson_depth_loss(depth_map[0, ..., 0], tgt, mask_t)
                     loss = loss + cfg.depth_prior.lambda_depth * dl
                     depth_loss_val = float(dl.detach())
+            if app_model is not None and hasattr(app_model, "tv_loss"):
+                loss = loss + cfg.bilateral_tv_lambda * app_model.tv_loss()
+            normal_loss_val = 0.0
+            if want_normal:
+                from .geometry_reg import gaussian_normals, normal_consistency_loss
+                n_cam = gaussian_normals(params["quats"], params["scales"], vm,
+                                         params["means"])
+                # composite the per-Gaussian normals with the ordinary rasteriser by
+                # passing them as post-activation colours (sh_degree=None)
+                n_map, _, _ = gsplat.rasterization(
+                    means=params["means"], quats=params["quats"],
+                    scales=torch.exp(params["scales"]),
+                    opacities=torch.sigmoid(params["opacities"]),
+                    colors=n_cam, viewmats=vm[None], Ks=K[None], width=w, height=h,
+                    sh_degree=None, near_plane=near, far_plane=far,
+                    packed=False, rasterize_mode="antialiased")
+                nl = normal_consistency_loss(
+                    n_map[0], depth_map[0, ..., 0], alphas[0, ..., 0], K,
+                    alpha_min=cfg.normal_consistency.alpha_min)
+                loss = loss + cfg.normal_consistency.lambda_normal * nl
+                normal_loss_val = float(nl.detach())
             health.check_loss(float(loss.detach()), step)
 
             strategy.step_pre_backward(params, optimizers, strategy_state, step, info)
@@ -369,6 +399,7 @@ class GsplatBackend(TrainingBackend):
                     "max_scale": max_scale, "mean_opacity": mean_opa,
                     "sh_degree": sh_now, "iters_per_s": round(ips, 2),
                     "depth_loss": depth_loss_val,
+                    "normal_loss": normal_loss_val,
                     "appearance_drift": app_model.drift() if app_model is not None else 0.0,
                     "pose_rot_deg": pose_model.magnitude()[0] if pose_model is not None else 0.0,
                     "pose_trans": pose_model.magnitude()[1] if pose_model is not None else 0.0,

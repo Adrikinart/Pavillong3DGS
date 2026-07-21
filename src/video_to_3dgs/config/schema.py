@@ -170,6 +170,16 @@ class FloaterCfg(_Base):
     prune_every: int = 500
 
 
+class NormalConsistencyCfg(_Base):
+    """Depth-normal consistency: a self-supervised geometric signal (2DGS/GOF/PGSR
+    use this internally). Penalises disagreement between the normal implied by each
+    Gaussian's shortest axis and the normal implied by the rendered depth."""
+    enabled: bool = False
+    lambda_normal: float = 0.05
+    start_iter: int = 7000        # let coarse geometry form before aligning it
+    alpha_min: float = 0.5        # ignore pixels with little accumulated opacity
+
+
 class DepthPriorCfg(_Base):
     """Monocular-depth regularization (sparse-view geometry prior)."""
     enabled: bool = False
@@ -184,6 +194,7 @@ class TrainCfg(_Base):
     bounds: "BoundsCfg" = Field(default_factory=lambda: BoundsCfg())
     floater: "FloaterCfg" = Field(default_factory=lambda: FloaterCfg())
     depth_prior: "DepthPriorCfg" = Field(default_factory=lambda: DepthPriorCfg())
+    normal_consistency: "NormalConsistencyCfg" = Field(default_factory=lambda: NormalConsistencyCfg())
     train_run_id: Optional[str] = None  # auto if None
     seed: int = 42
     max_iterations: int = 30000
@@ -200,6 +211,13 @@ class TrainCfg(_Base):
     appearance_embedding: bool = False
     appearance_dim: int = 16
     appearance_lr: float = 1e-3
+    # 'affine': one 3x3+bias per image (cannot encode geometry at all).
+    # 'bilateral': coarse (x,y,luma) grid of affine transforms - can represent
+    # vignetting/spatially varying response, at the cost of a weaker capacity bound.
+    appearance_model: Literal["affine", "bilateral"] = "affine"
+    bilateral_grid_wh: int = 16
+    bilateral_grid_luma: int = 8
+    bilateral_tv_lambda: float = 10.0
     antialiasing: bool = True
     lr_means: float = 1.6e-4
     checkpoint_interval: int = 5000
