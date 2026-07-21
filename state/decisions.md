@@ -178,6 +178,47 @@ views while enlarging the reconstructed volume (point extent [2.53, 9.61, 8.7]),
 
 Conclusion: keep `gsplat_hidetail_30k` as the deliverable.
 
+### Gaussian capacity is a REGULARIZER — cutting it 4x is the largest late-stage win
+Having falsified dilution (below), we tested the reverse on the deliverable dataset.
+Same data, same regularizers, same 30k iterations; only `cap_max` changes:
+
+| cap_max | Gaussians | PSNR | median | SSIM | LPIPS | <18 dB |
+|---|---:|---:|---:|---:|---:|---:|
+| 1.5M | 1,244,835 | 23.08 | 24.48 | 0.8461 | 0.3096 | 11% |
+| 750k |   653,831 | 24.32 | 25.10 | 0.8596 | **0.3025** | 11% |
+| **375k** | **358,878** | **24.92** | **25.13** | **0.8619** | 0.3132 | **0%** |
+
+Cutting the budget 4x gained **1.8 dB PSNR**, improved SSIM, **eliminated the
+catastrophic-view tail (11% -> 0%)** and shrank the model 3.5x (295 MB -> ~90 MB).
+The same direction holds on multi-clip: 750k scores 22.37 (its best) vs 22.03 at
+1.5M and 21.36 at 3.0M.
+
+This is sparse-view overfitting. Depth is constrained only by disagreement between
+views; a single-sided capture supplies little, so every surplus Gaussian is a
+parameter free to sit at a wrong depth while still reproducing the training images.
+Capacity buys solutions that fit training views and fail on held-out ones.
+
+**LPIPS turns upward between 750k and 375k** while PSNR/SSIM keep improving — the
+point where capacity begins limiting fine perceptual detail. For perceptual fidelity
+of the carving, 750k is the better operating point; for accuracy and robustness,
+375k. Recommended deliverable is now `gsplat_hidetail_cap375k`.
+
+Method note: this was found by being wrong first. The dilution hypothesis predicted
+*more* capacity would help, the experiment refuted it, and testing the opposite
+direction produced the biggest gain since the resolution fix. The falsification was
+worth more than the original hypothesis.
+
+### Relief mesh via TSDF of 3DGS depth (works)
+`GsplatBackend.export_mesh` fuses the model's composited depth (`RGB+ED`) over the
+training cameras into a TSDF volume: 1.39M verts / 2.62M tris from 226/226 cameras,
+with the panel's planks and carved cross-members clearly resolved. Alpha-masking is
+essential (where little opacity accumulates the depth is not noisy but meaningless)
+and the voxel size is derived from the robust point extent since the scene is in
+normalized units. Caveats: volumetric primitives give a biased expected depth, so the
+mesh is softer than a surface-aligned method would give, and the fusion includes
+surrounding wall/floor. Also fixed: `export.py` selected CUDA only for the 2DGS
+backend, so the gsplat mesh path would have been handed a CPU device.
+
 ### The budget-dilution hypothesis is FALSIFIED (cap_max experiment)
 The reasoning above suggested the residual ~1 dB was Gaussian-budget dilution over
 the 2.04x larger merged volume, and predicted that scaling `cap_max` 1.5M -> 3.0M

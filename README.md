@@ -18,9 +18,10 @@ camera never goes around the object), **low-parallax**, **close-range**, and the
 subject is a **near-planar relief** whose value is entirely in high-frequency
 carving detail.
 
-**The outcome.** A sharp, floater-free reconstruction at **PSNR 23.1 / SSIM 0.846**,
-exported as a standard `.ply`, with the whole pipeline reproducible from two
-config files.
+**The outcome.** A sharp, floater-free reconstruction at **PSNR 24.9 / SSIM 0.862**
+with **zero catastrophic views**, exported as a standard `.ply` **and** a fused
+triangle mesh of the relief — from a model of only **359 k Gaussians (~90 MB)**.
+The whole pipeline is reproducible from one config file.
 
 **What actually moved the needle**, in order of impact:
 
@@ -30,7 +31,8 @@ config files.
 | 2 | **Two trainer bugs** — scene scale from points not cameras; missing position-LR decay | PSNR **14 → 24**, fog → sharp |
 | 3 | **Resolution** — stopped downscaling 4K → 1600px | median PSNR **23.4 → 24.5**, SSIM **0.796 → 0.846**, **282/282** registered |
 | 4 | **Anti-floater regularization** | **18.2 % → 0 %** near-transparent haze; max Gaussian scale **1.00 → 0.16** |
-| 5 | **Per-image appearance embeddings** | unlocks multi-clip merging (**332/332** registered across 2 clips) |
+| 5 | **Cutting Gaussian capacity 4×** (`cap_max` 1.5M → 375k) | PSNR **23.1 → 24.9**, SSIM **0.846 → 0.862**, catastrophic views **11 % → 0 %**, model **3.5× smaller** |
+| 6 | **Per-image appearance embeddings** | unlocks multi-clip merging (**332/332** registered across 2 clips) |
 
 **What did not work**, reported because negative results are cheap to hide and
 expensive to rediscover: **2DGS** collapses to flat renders (PSNR ~13) on a
@@ -46,7 +48,9 @@ appearance embeddings.
 | Baseline (GLOMAP + 3DGS) | `pavillon_orbit_hq` | **23.9** | 0.825 | **0.245** | 1.53 M | 374 MB |
 | A3 regularized | `pavillon_orbit_reg` | 22.3 | 0.796 | 0.290 | 1.22 M | 301 MB |
 | A3 ablation (depth off) | `pavillon_orbit_reg_nodepth` | 22.6 | 0.798 | 0.294 | 1.23 M | 306 MB |
-| ⭐ **High-detail (recommended)** | `pavillon_orbit_hidetail` | 23.1 | **0.846** | 0.310 | 1.24 M | 309 MB |
+| High-detail (cap 1.5M) | `pavillon_orbit_hidetail` | 23.1 | 0.846 | 0.310 | 1.24 M | 295 MB |
+| High-detail, cap 750k | `pavillon_orbit_hidetail_cap750k` | 24.3 | 0.860 | **0.303** | 0.65 M | 155 MB |
+| ⭐ **High-detail, cap 375k (recommended)** | `pavillon_orbit_hidetail_cap375k` | **24.9** | **0.862** | 0.313 | **0.36 M** | **~90 MB** |
 | Multi-clip + appearance | `pavillon_multiclip` | 22.0 | 0.833 | 0.342 | 1.23 M | 304 MB |
 | Multi-clip, 2× budget | `pavillon_multiclip_cap3m` | 21.4 | 0.824 | 0.346 | 2.50 M | 508 MB |
 
@@ -88,12 +92,42 @@ Two cases where this mattered concretely:
    SSIM barely moved**, which is the signature of a global photometric offset rather
    than broken geometry.
 
-3. **More capacity made the model worse.** We hypothesised the multi-clip deficit was
-   Gaussian-budget dilution over a 2.04× larger volume and tested it by doubling
-   `cap_max` to 3.0 M. Both clips got *worse* and catastrophic views rose 24 % → 33 %.
-   With low parallax the reconstruction is underdetermined, so extra Gaussians mainly
-   add ways to fit the training views with geometry that does not generalise —
-   **`cap_max` behaves as a regularizer here, not a quality dial.**
+3. **More capacity made the model worse — and less made it much better.** See below.
+
+### Gaussian capacity is a regularizer, not a quality dial
+
+The single largest late-stage gain came from making the model *smaller*. Everything
+below is the same dataset, same regularizers, same 30 k iterations — only `cap_max`
+changes:
+
+| `cap_max` | Gaussians | PSNR | median | SSIM | LPIPS | catastrophic (<18 dB) |
+|---|---:|---:|---:|---:|---:|---:|
+| 3.0 M* | 2.50 M | 21.4* | — | 0.824* | 0.346* | 33 %* |
+| 1.5 M | 1.24 M | 23.08 | 24.48 | 0.846 | 0.310 | 11 % |
+| 750 k | 0.65 M | 24.32 | 25.10 | 0.860 | **0.303** | 11 % |
+| **375 k** | **0.36 M** | **24.92** | **25.13** | **0.862** | 0.313 | **0 %** |
+
+<sub>*the 3.0 M row is from the multi-clip dataset, where the doubling experiment was run.</sub>
+
+Cutting the budget 4× raised PSNR by **1.8 dB**, improved SSIM, **eliminated the
+catastrophic-view tail entirely**, and shrank the model **3.5×**.
+
+**Why:** with a single-sided, low-parallax capture the reconstruction is
+underdetermined — depth is constrained only by *disagreement* between views, and
+there is little. Every extra Gaussian is another parameter free to sit at a wrong
+depth while still reproducing the training images, so surplus capacity buys
+solutions that fit training views and fail on held-out ones. Classic overfitting,
+in a place where one does not usually think to look for it.
+
+**How we found it:** by being wrong. We first hypothesised the opposite — that a
+multi-clip model was starved of capacity — and *raised* `cap_max` to 3.0 M. It got
+worse, which falsified the hypothesis and pointed the other way. Testing the
+reversed direction produced the biggest quality gain since the resolution fix.
+
+Note **LPIPS turns upward** between 750 k and 375 k even as PSNR/SSIM keep improving:
+the point where capacity starts limiting fine perceptual detail. If you care most
+about perceptual fidelity of the carving, 750 k is arguably the better operating
+point; for accuracy and robustness, 375 k.
 
 **Aggregate means hide the failure structure.** Per-view analysis is what diagnosed
 the biggest win: every catastrophic view was an extreme close-up at grazing
@@ -124,6 +158,22 @@ detail) and motivated the high-detail run.
 <p align="center">
   <img src="docs/assets/training_curves.png" width="760" alt="Training curves">
 </p>
+
+### Surface mesh
+
+<p align="center">
+  <img src="docs/assets/mesh_preview.png" width="900" alt="Extracted relief mesh"><br>
+  <em>TSDF-fused triangle mesh (1.39 M verts / 2.62 M tris) — the panel's planks and
+  carved cross-members are resolved</em>
+</p>
+
+`export` also writes `mesh.ply`, produced by fusing the model's own composited depth
+over all training cameras. Two honest caveats: volumetric Gaussians give a **biased**
+expected depth (a Gaussian straddling a surface contributes mass on both sides), so
+the mesh is geometrically softer than a surface-aligned method would give; and the
+fusion covers the whole scene, so surrounding wall and floor are included. 2DGS is
+the principled route to surfaces but fails on this capture — see the negative result
+above.
 
 Every run also writes `videos/orbit.mp4` (front-arc novel-view sweep) and
 `videos/training_progression.mp4` (reconstruction quality over iterations). These

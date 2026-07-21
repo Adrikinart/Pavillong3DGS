@@ -1,0 +1,95 @@
+# CAPACITY SWEEP (190k) — confirming where the curve turns.
+#
+# Measured on this dataset (all else identical):
+#   1.5M -> 23.08 / SSIM 0.846 / LPIPS 0.310 / 11%% catastrophic
+#   750k -> 24.32 / 0.860 / 0.3025 / 11%%
+#   375k -> 24.92 / 0.862 / 0.3132 /  0%%
+# PSNR, SSIM and the catastrophic-view rate all improve as capacity FALLS
+# (sparse-view overfitting), but LPIPS has already turned upward between 750k and
+# 375k - the signal that capacity is starting to limit fine perceptual detail, which
+# for a carved relief is what we care about most. This point tests whether that turn
+# is real: PSNR/SSIM should flatten or fall and LPIPS should worsen further.
+#
+object_name: pavillon_hidetail
+capture_mode: orbit
+profile:
+  name: rtxpro
+  nodelist: GPURACK2
+videos:
+  - /home/AdrienK/Datasets/VideosForNVSpersonnal/Pavillon/IMG_9647.MOV
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 4.0
+  max_frames: 400
+  min_frames: 60
+  resize_long_edge: 2560       # source is 3840x2160; keep the fine carving
+
+filter_frames:
+  enabled: true
+  blur_var_min: 50.0
+
+generate_masks:
+  enabled: false
+
+run_colmap:
+  matcher: exhaustive
+  mapper_backend: glomap       # 181/193 vs 82 for incremental COLMAP on this capture
+  camera_model: OPENCV
+  single_camera: true
+  sequential_overlap: 15
+
+validate_colmap:
+  minimum_registration_ratio: 0.60
+  hard_fail: false
+
+normalize_scene:
+  method: points
+
+split_dataset:
+  strategy: pose_aware
+
+train:
+  backend: gsplat
+  train_run_id: gsplat_hidetail_cap190k
+  max_iterations: 30000
+  sh_degree: 3
+  use_masks: false
+  antialiasing: true
+  checkpoint_interval: 5000
+  validation_interval: 1000
+  val_render_count: 4
+  densification:
+    strategy: default
+    start_iteration: 500
+    stop_iteration: 15000
+    interval: 100
+    grad_threshold: 0.0003
+    opacity_reset_interval: 3000
+    prune_opacity: 0.005
+    # Kept at the A3 run's value so resolution/frame-count/min_opacity are the only
+    # changed variables (clean comparison), and so the run fits a 16 GB card.
+    cap_max: 190000
+  bounds:
+    enabled: true
+    margin: 0.5
+    prune_every: 500
+  floater:
+    enabled: true
+    max_scale_frac: 0.15
+    min_opacity: 0.005         # was 0.02 — the measured PSNR cost
+    prune_every: 500
+  depth_prior:
+    enabled: true              # ~free in PSNR and it increases floater removal
+    model: depth-anything/Depth-Anything-V2-Small-hf
+    lambda_depth: 0.1
+    start_iter: 2000
+    loss: pearson
+
+report:
+  enabled: true
+  figures: [training_curves, qualitative, gaussian_stats, per_view, gaussian_centers]
+  videos: [orbit, progression]
+  orbit_frames: 150
+  orbit_elevation_deg: 15.0
+  video_fps: 30
