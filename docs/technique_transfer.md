@@ -36,10 +36,10 @@ safe to assume and are being measured rather than copied:
    overfit its low-parallax views. An orbit supplies real multi-view constraint, so the
    overfitting pressure is weaker and the optimum should be *higher*. It is:
 
-   | `cap_max` | 750 k | 1.5 M | 3 M |
-   |---|---|---|---|
-   | with depth prior *(confounded)* | 19.49 | 20.35 | 20.76 |
-   | **no depth prior (recommended)** | 19.84 | 21.25 | **22.15** |
+   | `cap_max` | 750 k | 1.5 M | 3 M | 6 M |
+   |---|---|---|---|---|
+   | with depth prior *(confounded)* | 19.49 | 20.35 | 20.76 | — |
+   | **no depth prior (recommended)** | 19.84 | 21.25 | 22.15 | **23.41** |
 
    **A correction worth reading, because the confound changed the curve's shape and not
    just its level.** Measured *with* the depth prior — which every earlier number here
@@ -49,18 +49,30 @@ safe to assume and are being measured rather than copied:
 
    - 750 k → 1.5 M: **+1.41 dB, CI [+0.81, +2.01]**, 12/13 views
    - 1.5 M → 3 M: **+0.90 dB, CI [+0.41, +1.39]**, 11/13 views
+   - 3 M → 6 M: **+1.26 dB, CI [+0.35, +2.18]**, 12/13 views
 
-   So there is no plateau — the curve is **still climbing at 3 M**, and a 6 M probe is
-   running to find where it turns. The prior's damage *grows with capacity* (+0.35 at
-   750 k, +0.89 at 1.5 M, +1.39 at 3 M), which is what flattened the top of the curve and
-   manufactured the plateau: more primitives means more of them pulled toward the
-   reflection-depths the prior supplies (see the depth-prior section below).
+   There is no plateau. Every doubling is significant, the per-step gains are **not**
+   diminishing (+1.41, +0.90, +1.26), and the curve has still not turned at 6 M — a 12 M
+   probe is running. Budget utilisation confirms the model is really spending it: each run
+   ends at ~88 % of its cap (671 k, 1.32 M, 2.64 M, 5.27 M), the shortfall being the final
+   opacity prune, so MCMC is not saturating below the target.
 
-   The inversion versus the Pavillon is *strengthened*, not weakened — copying its 375 k
-   optimum here would now cost more than two decibels. And the methodological rule
-   survives its own correction: **sweep capacity per capture, read the paired CI rather
-   than the mean — and make sure nothing else in the configuration is fighting you**, or
-   the sweep measures the confound instead of the capacity.
+   The prior's damage *grows with capacity* (+0.35 at 750 k, +0.89 at 1.5 M, +1.39 at 3 M),
+   which is what flattened the top of the curve and manufactured the plateau: more
+   primitives means more of them pulled toward the reflection-depths the prior supplies
+   (see the depth-prior section below).
+
+   So the two captures differ by at least **16×** in optimal budget — 375 k versus ≥6 M —
+   which makes the inversion far starker than first measured. A plausible reading is that
+   the quantity being sized is not "the object" but *the amount of observed scene content*:
+   the Pavillon is one wall seen from one side with little parallax, while this capture is
+   an entire auditorium observed from 310° of azimuth, and the helmet is a small part of
+   what the model must explain. That is a hypothesis, not a result — it predicts that
+   masking to the helmet would collapse the optimum, which we have not tested.
+
+   The methodological rule survives its own correction: **sweep capacity per capture, read
+   the paired CI rather than the mean — and settle the rest of the configuration first**,
+   or the sweep measures the confound instead of the capacity.
 
 2. **2DGS works here — CONFIRMED, after one loss weight was fixed.** It collapsed on the
    Pavillon because a surface-aligned disk must recover a normal that a single-sided

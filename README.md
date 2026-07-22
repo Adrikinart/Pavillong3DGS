@@ -341,14 +341,18 @@ measured, and **two of the three surprised us**.
   Regenerate with <code>python scripts/capacity_curve.py</code>.</em>
 </p>
 
-| Casque `cap_max` | 750 k | 1.5 M | **3 M** |
-|---|---|---|---|
-| PSNR *(with depth prior — confounded)* | 19.49 | 20.35 | 20.76 |
-| **PSNR (no depth prior — recommended)** | 19.84 | 21.25 | **22.15** |
+| Casque `cap_max` | 750 k | 1.5 M | 3 M | **6 M** |
+|---|---|---|---|---|
+| PSNR *(with depth prior — confounded)* | 19.49 | 20.35 | 20.76 | — |
+| **PSNR (no depth prior — recommended)** | 19.84 | 21.25 | 22.15 | **23.41** |
 
-Judged *paired* per view, with the prior removed: 750 k → 1.5 M is **+1.41 dB, CI
-[+0.81, +2.01]** (12/13 views) and 1.5 M → 3 M is **+0.90 dB, CI [+0.41, +1.39]**
-(11/13). Both real — the curve is **still climbing at 3 M**, and a 6 M probe is running.
+Judged *paired* per view, with the prior removed, **every doubling is significant**:
+750 k → 1.5 M **+1.41 dB** (12/13), 1.5 M → 3 M **+0.90 dB** (11/13), 3 M → 6 M
+**+1.26 dB, CI [+0.35, +2.18]** (12/13). The gains are not even diminishing, and the curve
+has **still not turned at 6 M** (a 12 M probe is running). Each run really spends its
+budget — all end at ~88 % of cap, the rest being the final opacity prune.
+
+So the two captures differ by at least **16×** in optimal budget: **375 k vs ≥6 M**.
 
 **This corrects an earlier conclusion of ours.** Measured *with* the depth prior, that
 second step read as a tie (+0.41 dB, CI [−0.45, +1.26]) and we reported the curve as
