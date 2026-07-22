@@ -14,7 +14,7 @@ does not help · ⏭️ deliberately skipped.
 | Scene-scale + LR-decay fixes | PSNR 14 → 24 | Framework-wide | ✅ automatic |
 | **Resolution** (no downscale) | +1.8 dB, tail → 0 | Limited — only 1 of 4 clips is 4K | ➖ 2560 px, capped by 1080p clips |
 | **Anti-floater** (bounds + prune) | 18.2 % → 0 % haze | Yes | ✅ applied |
-| **Depth prior** (DepthAnything-v2) | nearly free (0.26 dB) | Expected lower — an orbit already has parallax | 🔬 **on in every run, ablation running** |
+| **Depth prior** (DepthAnything-v2) | nearly free (0.26 dB) | Assumed "low impact" — **wrong** | ❌ **hurts: −0.89 dB**, CI [+0.28, +1.51] off−on |
 | **Capacity** sweep | 375 k optimal (*less is more*) | **INVERTS** — an orbit is not sparse-view | ✅ **1.5 M** optimal (4× the Pavillon) |
 | **MCMC** densification | parity, cleaner control | Yes | ✅ applied |
 | **Normal-consistency** | mesh coherence 0.81 → 0.92 | Yes (helmet mesh) | ✅ applied |
@@ -94,17 +94,38 @@ drift enough to matter. They earned their +3 dB on the Pavillon only when mergin
 So the rule is not "object captures want appearance embeddings"; it is **"turn them on
 when you merge sources, and not otherwise."**
 
-## A claim that was assumed rather than measured
+## The depth prior actively hurts a specular object
 
-The depth-prior row above was originally marked "low impact here" by *reasoning*: it moved
-the Pavillon only 0.26 dB, and an orbit supplies real parallax, so a monocular depth prior
-should matter even less. That is the same style of argument that produced the capacity and
-pose-refinement predictions — one of which inverted and one of which was falsified. It is
-not evidence, and it should not have been recorded in the same table as measurements.
+This row was originally marked "low impact here" by *reasoning*: it moved the Pavillon only
+0.26 dB, and an orbit supplies real parallax, so a monocular depth prior should matter even
+less. That is the same style of argument that produced the capacity and pose-refinement
+predictions — one inverted, one was falsified. It was not evidence and should not have sat
+in a table of measurements. Measured, everything else identical:
 
-DepthAnything-v2-Small (Pearson loss, λ = 0.1, from iteration 2000) is in fact enabled in
-**every** Casque run reported here, so it is part of the recommended configuration whether
-or not it earns its place. The ablation is running; the row stays 🔬 until it lands.
+| | PSNR | SSIM | LPIPS |
+|---|---|---|---|
+| depth prior ON (what every earlier Casque number used) | 20.35 | 0.8636 | 0.2710 |
+| **depth prior OFF** | **21.25** | **0.8664** | **0.2586** |
+
+Paired per-view: **+0.89 dB from removing it, 95 % CI [+0.28, +1.51]**, 9/13 views, and
+better on all three metrics. Not "nearly free" — it was costing about a decibel.
+
+**The likely mechanism is specularity, and it generalises.** DepthAnything is trained on
+ordinary photographs. On a mirror-like surface it returns the depth of the *reflected
+scene* rather than of the surface, because that is what such a surface looks like. A chrome
+helmet therefore receives confidently wrong depth targets exactly where photometric
+supervision is already weakest. Combined with an orbit's real parallax leaving little for a
+prior to add, the prior is all cost and no benefit. The rule this suggests — to be tested
+rather than assumed, given the above — is that **monocular depth priors suit sparse-view,
+low-parallax, matte captures, and should be treated as suspect on reflective subjects.**
+
+**Two consequences worth stating plainly.** Every other Casque number in this document was
+measured with the harmful prior enabled, including the capacity sweep. Those comparisons
+remain internally valid (all arms carried it), but the absolute figures are ~0.9 dB
+pessimistic, and the depth-off capacity curve is being re-measured to confirm the optimum
+does not move. Second, the ablation could never have run before: the codepath with the
+prior disabled crashed at iteration 7000 (a flag conflated "needs a depth render" with
+"apply the depth loss"), so the configuration had shipped untested behind a default.
 
 ## Findings that transferred as-is
 

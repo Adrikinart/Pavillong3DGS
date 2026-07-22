@@ -112,9 +112,20 @@ train:
     enabled: true
     max_scale_frac: 0.15
     min_opacity: 0.005
-  # Good multi-view coverage makes the depth prior less critical, but it is cheap.
+  # The monocular depth prior is OFF here, and that is a measured decision that reverses
+  # what we assumed. Ablation on this capture (13 test views, everything else identical):
+  #   depth ON  20.35 dB / 0.8636 / 0.2710
+  #   depth OFF 21.25 dB / 0.8664 / 0.2586
+  #   paired +0.89 dB, 95% CI [+0.28, +1.51], 9/13 views -> SIGNIFICANT, better on all three
+  # We had carried "nearly free, low impact" over from the Pavillon. It is not free here:
+  # it costs ~0.9 dB. The likely mechanism is specularity. DepthAnything is trained on
+  # ordinary photographs, and on a mirror-like surface it reports the depth of the
+  # REFLECTED scene rather than of the surface -- so on a chrome helmet the prior supplies
+  # confidently wrong targets exactly where photometric supervision is already hardest.
+  # An orbit also supplies real parallax, so there is little the prior could add even if
+  # it were right. Keep it ON for sparse-view, low-parallax, matte captures (the Pavillon).
   depth_prior:
-    enabled: true
+    enabled: false
     model: depth-anything/Depth-Anything-V2-Small-hf
     lambda_depth: 0.1
     start_iter: 2000
