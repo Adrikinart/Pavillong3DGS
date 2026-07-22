@@ -2,7 +2,7 @@
 # 2DGS failed on the single-sided Pavillon; the Casque is a full orbit of a curved
 # object, the multi-view surface coverage 2DGS needs. Same preprocessing as casque.yaml
 # (masks off, full-frame GLOMAP); isolate the helmet spatially at export.
-object_name: casque_orbit_2dgs
+object_name: casque_orbit
 capture_mode: orbit
 profile:
   name: rtxpro
@@ -82,7 +82,16 @@ train:
     enabled: false           # 2DGS has its own normal-consistency + distortion terms
   backend_opts:
     normal_lambda: 0.05
-    dist_lambda: 1.0
+    # dist_lambda MUST stay 0 for this capture. The 2DGS distortion loss concentrates
+    # ray weight onto a single surface, which suits a bounded, masked object -- but masks
+    # are off here (see casque.yaml), so the model must also explain a whole room at
+    # varied depths, and the term fights that. Measured: with dist_lambda 1.0 the run
+    # peaked at 24.6 dB val, then collapsed monotonically the moment this loss engaged at
+    # iteration 7000, ending at 15.79 dB test. With 0.0 it ends at 20.19 dB -- +4.40 dB,
+    # 95% CI [+2.32, +6.48], and a statistical tie with 3DGS. See
+    # docs/technique_transfer.md and docs/assets/casque/2dgs_distortion.png.
+    # Revisit only if you reconstruct a masked, background-free object.
+    dist_lambda: 0.0
     normal_start_iter: 7000
     dist_start_iter: 7000
 

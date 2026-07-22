@@ -311,10 +311,97 @@ made cross-clip alignment easy); the helmet reconstructs cleanly — sharp gold 
    dominates the frame, so the gain is environment, not helmet. The helmet detail comes
    from the one close-up 4K clip.
 
-Under test as of writing (the genuinely relevant untested transfers): **2DGS** (a real
-orbit should give it the multi-view normals the Pavillon lacked), a **capacity sweep**
-(does "less is more" invert when there is real parallax?), and **pose refinement**
-(mixed-camera poses are 1.57 px, vs the Pavillon's already-perfect 0.9 px).
+<p align="center">
+  <img src="docs/assets/casque/orbit.gif" width="620" alt="Orbit render of the reconstructed helmet"><br>
+  <em>360° turntable of the reconstructed helmet (1.5 M Gaussians).</em>
+</p>
+
+### The three transfer tests — results
+
+The whole point of a second, opposite capture is to find out which Pavillon findings are
+*laws* and which were properties of that capture. All three predictions have now been
+measured, and **two of the three surprised us**.
+
+| Prediction | Outcome | Measured |
+|---|---|---|
+| Capacity "less is more" **inverts** | ✅ **confirmed** | optimum 375 k → **1.5 M** |
+| **2DGS should work** on a real orbit | ✅ confirmed, after a fix | 15.79 → **20.19 dB**, ties 3DGS |
+| Pose refinement **may help** (1.57 px poses) | ❌ **falsified** | **−0.54 dB**, CI [−0.71, −0.36] |
+
+**1. Capacity inverts — the single most transferable lesson.**
+
+<p align="center">
+  <img src="docs/assets/capacity_curve.png" width="960" alt="Capacity sweep for both captures"><br>
+  <em>The same sweep on both objects. The curves run in opposite directions:
+  the low-parallax Pavillon degrades with capacity, the orbit improves with it.
+  Regenerate with <code>python scripts/capacity_curve.py</code>.</em>
+</p>
+
+| Casque `cap_max` | 750 k | **1.5 M** | 3 M |
+|---|---|---|---|
+| PSNR | 19.49 | **20.35** | 20.76 |
+| LPIPS | 0.2892 | 0.2710 | 0.2612 |
+
+Judged *paired* per view: 750 k → 1.5 M is **+0.86 dB, CI [+0.34, +1.39]** (real);
+1.5 M → 3 M is **+0.41 dB, CI [−0.45, +1.26]** — a **tie**. So the curve rises then
+plateaus, and **1.5 M is the operating point**: 3 M doubles the model for a gain inside
+the error bar. Copying the Pavillon's 375 k here would have cost over a decibel.
+**The number does not transfer; the method does — sweep per capture, and read the CI.**
+
+**2. 2DGS works here — but only after the metric was disbelieved.**
+
+<p align="center">
+  <img src="docs/assets/casque/2dgs_distortion.png" width="900" alt="2DGS distortion-loss collapse"><br>
+  <em>Left: the collapse begins exactly at the regularizer's start iteration — caused,
+  not gradual. Right: held-out test PSNR.</em>
+</p>
+
+The first 2DGS run scored **15.79 dB** against 3DGS's 20.35 — apparently the same
+failure 2DGS suffered on the Pavillon. The trajectory disagreed: it was at **24.6 dB and
+still climbing** until the distortion and normal losses engaged at iteration 7000, then
+decayed for 23 k iterations. Setting `dist_lambda: 0` recovers **+4.40 dB,
+CI [+2.32, +6.48]** (12/13 views) and lands at 20.19 — **a statistical tie with 3DGS**
+(−0.16 dB, CI [−1.26, +0.94]). Parity *is* the win for a surface method: equal
+photometric quality, plus a real surface-aligned mesh. (The distortion loss forces ray
+weight onto one surface, which suits a masked object — but masks are off here, so the
+model must also explain a whole room at varied depths.)
+
+The final metric alone said "2DGS does not work on this capture." The trajectory said
+"2DGS works and one weight was wrong." Those are opposite decisions; only the trajectory
+tells them apart.
+
+### The helmet deliverable
+
+<p align="center">
+  <img src="docs/assets/casque/mesh_preview.png" width="960" alt="2DGS vs 3DGS TSDF helmet mesh"><br>
+  <em>Same crop, same camera path, both meshes. 2DGS resolves the crest ridges and plume
+  strands; the 3DGS TSDF mesh has the gross form but visible terracing. Note the two run
+  at different TSDF resolutions (190 k vs 11 k triangles), so this is a qualitative
+  comparison, not a controlled one.</em>
+</p>
+
+Because masks are off, the exported model contains a whole auditorium — the helmet is
+isolated **at export**, not during training:
+
+```bash
+# centre = the orbit's convergence point (where all optical axes meet)
+python scripts/crop_object.py exports/casque_2dgs_nodist/mesh.ply helmet.ply \
+       --center -0.183 0.166 0.220 --half-extent 0.24     # 497 MB -> 7.8 MB
+python scripts/mesh_preview.py helmet.ply --out preview.png --views 4
+```
+
+Two traps worth recording, both of which cost a wrong figure before being caught:
+the scene's up axis is **not** +Z (`[0.166, −0.860, −0.483]`, confirmed to 7.3° by the
+camera ring's own normal), and the box centre is best derived from the orbit geometry
+rather than guessed — every camera looks at the helmet, so the least-squares meeting
+point of the optical axes *is* the object centre.
+
+**3. Pose refinement — our explanation was wrong.** We had attributed its 1 dB Pavillon
+cost to poses already being sub-pixel (0.92 px). The Casque's mixed pro+iPhone set
+registers at 1.57 px, so there should have been error to recover. There was not:
+**−0.54 dB, CI [−0.71, −0.36]**, improving only 9 of 53 views. It is now a negative on
+*both* captures, so the "poses were already too good" story does not survive; the likelier
+account is that our SE(3) refinement trades multi-view consistency for per-view fit.
 
 ## Quickstart
 

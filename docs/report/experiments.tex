@@ -110,13 +110,23 @@ from 1.5\,M gained 1.8\,dB and shrank the model $3.5\times$ (295\,MB
 $\rightarrow$ 89\,MB). This is sparse-view overfitting: with low parallax the
 objective is underdetermined, so surplus primitives buy configurations that fit the
 training views and fail on held-out ones (\S\ref{sec:sparse}). The curve genuinely
-turns --- 190\,k is worse than 375\,k on PSNR and SSIM --- so 375\,k is an optimum
-rather than the smallest budget tried.
+turns rather than merely flattening --- 750\,k and 1.5\,M are both \emph{significantly}
+worse than 375\,k --- so 375\,k is an optimum and not simply the smallest budget tried.
+(190\,k is worse on SSIM and LPIPS but ties on PSNR; see the paired analysis below.)
 
 The metrics disagree informatively: \textbf{LPIPS is minimised at 750\,k} and
 degrades monotonically as capacity shrinks, while PSNR, SSIM and robustness prefer
 less. Perceptual detail wants capacity; accuracy and generalisation want less. We
 report both operating points rather than collapsing them into one recommendation.
+
+A paired per-view test (same test views, both models) sharpens this. The
+375\,k\,$\rightarrow$\,750\,k drop is real ($-0.60$\,dB, 95\,\% CI $[-1.13, -0.07]$)
+and 750\,k\,$\rightarrow$\,1.5\,M more so ($-1.24$\,dB, CI $[-2.08, -0.39]$), but
+190\,k\,$\rightarrow$\,375\,k is $+0.07$\,dB with CI $[-0.30, +0.43]$ --- a
+\emph{tie}. So the descending arm of the curve is established, while the peak is a
+plateau rather than a point: 375\,k is preferred over the PSNR-tied 190\,k on SSIM
+(0.8619 vs 0.8559) and LPIPS (0.3132 vs 0.3382), not on PSNR. Reporting the mean
+alone would have overstated the sharpness of the optimum.
 
 \paragraph{Ablations and negative results.}
 \begin{itemize}
@@ -207,3 +217,117 @@ carved cross-members are resolved. Two limitations are inherent: volumetric
 primitives give a biased expected depth, so the surface is softer than a
 surface-aligned method would produce, and the fusion covers whatever the cameras
 saw, so the crop is what isolates the subject from the room.
+
+%---------------------------------------------------------------------------
+\section{Transfer to a second capture: the Casque}
+\label{sec:casque}
+
+Every result in \S\ref{sec:experiments} was obtained on one capture. A finding measured
+on a single scene is not yet a method, so we reconstructed a second object chosen to be
+the Pavillon's opposite on the axes that mattered, and asked which conclusions survive.
+
+The Casque Saint-Georges is a chrome dragoon helmet with a horsehair plume, free-standing
+on a checkerboard calibration target in an auditorium, captured in a full orbit with both
+a professional camera and an iPhone. Against the Pavillon it inverts coverage
+(orbit vs.\ single-sided), subject embedding (free-standing vs.\ carved into a wall) and
+camera count. GLOMAP registers 533/536 images across four clips at 1.57\,px.
+
+\paragraph{Masks off, deliberately.} The obvious reading of ``we only want the helmet''
+is to segment it. That is the wrong move here, for two reasons we verified before
+spending GPU time: \texttt{rembg}'s salient-object mask swings between 0.1\,\% and 45\,\%
+of the frame across the orbit (chrome reflections, a wispy plume, a competing stand), and
+the checkerboard --- which a helmet-only mask would discard --- carries essentially all
+the stable SfM features, the chrome helmet having almost none. We therefore reconstruct
+the whole room and isolate the helmet \emph{spatially at export}, which is possible
+precisely because, unlike the wall-embedded relief, the helmet is separable in 3D.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{llll}
+\toprule
+Pavillon finding & Prediction for the Casque & Outcome \\
+\midrule
+375\,k optimal (\emph{less is more}) & should \textbf{invert} (real parallax) & \textbf{confirmed}: 1.5\,M \\
+2DGS fails (13.3\,dB)                & should \textbf{work} (multi-view normals) & confirmed, after a fix \\
+Pose refinement costs 1\,dB          & may \textbf{help} (1.57\,px vs 0.92\,px) & \textbf{falsified}: still hurts \\
+\bottomrule
+\end{tabular}
+\caption{The three findings that were not safe to copy, and what measuring them showed.
+Two of three predictions were wrong in an instructive way.}
+\label{tab:transfer}
+\end{table}
+
+\paragraph{Capacity inverts.} Holding everything else fixed, test PSNR rises
+19.49\,$\rightarrow$\,20.35\,$\rightarrow$\,20.76 for \texttt{cap\_max} of 750\,k, 1.5\,M
+and 3\,M --- the opposite direction to the Pavillon. Paired per-view over the 13 test
+views, 750\,k\,$\rightarrow$\,1.5\,M is $+0.86$\,dB (95\,\% CI $[+0.34, +1.39]$, 10/13
+views) and therefore real, while 1.5\,M\,$\rightarrow$\,3\,M is $+0.41$\,dB (CI
+$[-0.45, +1.26]$, 8/13) and therefore a tie. The curve rises and then \emph{plateaus}
+rather than turning, so 1.5\,M is the operating point: 3\,M doubles the model for a gain
+inside the error bar. Transplanting the Pavillon's 375\,k would have cost over a decibel.
+The transferable object is the procedure --- sweep capacity per capture, and read the
+paired interval --- not the number.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{capacity_curve.png}
+\caption{The same capacity sweep on both captures. The curves run in opposite
+directions: the low-parallax Pavillon degrades as capacity grows, while the orbit
+improves with it before plateauing. Error bars are the 95\,\% CI of the mean over the
+held-out views. Regenerate with \texttt{scripts/capacity\_curve.py}.}
+\label{fig:capacity}
+\end{figure}
+
+\paragraph{2DGS works, once one loss weight is corrected.} Run with the default
+\texttt{dist\_lambda} $=1.0$, 2DGS scores 15.79\,dB against 3DGS's 20.35, which reads as
+the same failure it suffered on the Pavillon. The trajectory contradicts that reading: the
+run reaches 24.6\,dB validation and is still improving at iteration 7000, which is exactly
+where the distortion and normal regularizers engage, after which it decays monotonically
+for the remaining 23\,k iterations. Setting \texttt{dist\_lambda} $=0$ recovers
+$+4.40$\,dB (CI $[+2.32, +6.48]$, 12/13 views) and reaches 20.19\,dB --- statistically
+tied with 3DGS ($-0.16$\,dB, CI $[-1.26, +0.94]$). Parity is the success condition for a
+surface method: equal photometric quality while producing a surface-aligned mesh. The
+mechanism is intelligible: the distortion loss concentrates ray weight onto a single
+surface, which suits a bounded masked object, whereas this model must also explain a room
+at widely varied depths.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{2dgs_distortion.png}
+\caption{Left: validation PSNR for the two 2DGS runs. The collapse begins exactly at the
+regularizer's start iteration, which is what identifies it as caused rather than gradual.
+Right: held-out test PSNR, where removing the distortion term recovers parity with 3DGS.
+Regenerate with \texttt{scripts/dist\_collapse\_figure.py}.}
+\label{fig:2dgsdist}
+\end{figure}
+
+The methodological point outlives the setting. The final metric alone supports ``2DGS does
+not work on this capture''; the trajectory supports ``2DGS works and one weight was
+misconfigured''. These prescribe opposite actions, and only the trajectory separates them.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{mesh_preview.png}
+\caption{The helmet mesh, cropped from the full-room reconstruction at export. Both rows
+share one camera path. 2DGS (top) resolves the crest ridges and plume strands; the 3DGS
+TSDF mesh (bottom) carries the gross form with visible terracing. The two were fused at
+different TSDF resolutions (190\,k vs.\ 11\,k triangles), so this is a qualitative
+comparison rather than a controlled one.}
+\label{fig:helmetmesh}
+\end{figure}
+
+\paragraph{Pose refinement: our explanation was wrong.} We had attributed its 1\,dB
+Pavillon cost to GLOMAP's poses already being sub-pixel (0.92\,px), implying it should help
+where poses are worse. The mixed pro/iPhone Casque set registers at 1.57\,px and gives
+$-0.54$\,dB (CI $[-0.71, -0.36]$), improving only 9 of 53 views. Pose refinement is now
+negative on both captures, so the ``poses were already too good'' account does not survive;
+the likelier explanation is that our SE(3) refinement trades multi-view consistency for
+per-view photometric fit. We report it as an unresolved negative rather than repair the
+story after the fact.
+
+\paragraph{What transferred unchanged.} GLOMAP, the scene-scale and learning-rate fixes,
+the anti-floater bounds and prune, MCMC densification, normal-consistency and the
+appearance embeddings all applied without modification and behaved as on the Pavillon. The
+explicit object box remains a negative on both: concentrating the budget on the helmet
+produced no sharper helmet and added boundary smearing, because the helmet is
+data-limited rather than budget-limited.
