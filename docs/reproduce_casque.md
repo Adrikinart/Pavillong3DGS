@@ -16,7 +16,7 @@ therefore call for opposite settings.
 
 | Axis | Pavillon (scene) | Casque (object) | Consequence |
 |---|---|---|---|
-| Coverage | single-sided, low parallax | **full orbit**, high parallax | more capacity: **1.5 M**, not the Pavillon's 375k |
+| Coverage | single-sided, low parallax | **full orbit**, high parallax | far more capacity: **6 M**, 16x the Pavillon's 375k |
 | Subject vs scene | relief carved *into* a wall | **free-standing** helmet | isolate the helmet **in 3D** (crop), not by mask — see below |
 | Cameras | one iPhone clip | **pro camera + iPhone** | **appearance embeddings** reconcile the two responses |
 | Surface method | 2DGS failed (no multi-view normals) | multi-view surface | **2DGS works** (with `dist_lambda: 0`) — use it for the mesh |
@@ -40,14 +40,7 @@ single 4K clip; the multi-clip config is the one that needs appearance embedding
 
 ## Steps
 
-1. **Verify the footage.** The folder holds pro clips (`102A25xx.MOV`), iPhone clips
-   (`IMG_8xxx.MOV`) and stills. Curate `videos:` down to the clean full orbits; short
-   establishing clips can hurt. Check each with:
-   ```bash
-   python -m video_to_3dgs.cli inspect-video --config configs/pipeline/casque/casque.yaml
-   ```
-
-0. **Turn the monocular depth prior OFF** (already set in the config). It helps the
+1. **Turn the monocular depth prior OFF** (already set in the config). It helps the
    Pavillon and costs almost nothing there, so we carried it over — but ablated here it
    **loses 0.89 dB** (21.25 → 20.35, CI [+0.28, +1.51] for removing it, 9/13 views) and is
    worse on SSIM and LPIPS too. DepthAnything is trained on ordinary photographs, so on a
@@ -56,7 +49,14 @@ single 4K clip; the multi-clip config is the one that needs appearance embedding
    supervision is weakest, while the orbit's parallax already pins the geometry. Treat
    monocular depth priors as suspect on any reflective subject.
 
-2. **Do NOT mask this capture** (a gate test settled it). rembg's salient-object model
+2. **Verify the footage.** The folder holds pro clips (`102A25xx.MOV`), iPhone clips
+   (`IMG_8xxx.MOV`) and stills. Curate `videos:` down to the clean full orbits; short
+   establishing clips can hurt. Check each with:
+   ```bash
+   python -m video_to_3dgs.cli inspect-video --config configs/pipeline/casque/casque.yaml
+   ```
+
+3. **Do NOT mask this capture** (a gate test settled it). rembg's salient-object model
    swings from 0.1% to 45% of the frame across the orbit — chrome reflections, a wispy
    horsehair plume and a competing stand defeat it. More importantly, the scene has a
    **checkerboard calibration target** (the best SfM features present) while the chrome
@@ -65,7 +65,7 @@ single 4K clip; the multi-clip config is the one that needs appearance embedding
    spatially afterwards. (`rembg` needs `onnxruntime`; masking is the right tool only
    when the object is genuinely salient — a matte object on a plain background.)
 
-3. **Run it** (env + node pre-flight identical to the Pavillon —
+4. **Run it** (env + node pre-flight identical to the Pavillon —
    see [reproduce_pavillon.md](reproduce_pavillon.md) §0–1):
    ```bash
    sbatch --partition=rtxpro --nodelist=GPURACK2 --gres=gpu:1 --cpus-per-task=8 \
@@ -73,31 +73,33 @@ single 4K clip; the multi-clip config is the one that needs appearance embedding
           scripts/slurm/train.sbatch configs/pipeline/casque/casque.yaml
    ```
 
-4. **Tune capacity for THIS object.** 375k was the Pavillon optimum *because* it was
+5. **Tune capacity for THIS object.** 375k was the Pavillon optimum *because* it was
    sparse-view; an orbit has real parallax, so the optimum is higher. Run the short
    sweep (reuses the SfM, so only training re-runs):
    ```bash
-   for cap in 750000 1500000 3000000; do
+   for cap in 750000 1500000 3000000 6000000 12000000; do
      sbatch ... scripts/slurm/train.sbatch configs/pipeline/casque/casque.yaml \
             --force --from-stage train \
+            --set train.depth_prior.enabled=false \
             --set train.densification.cap_max=$cap \
             --set train.train_run_id=casque_cap${cap}
    done
    ```
    Measured on the held-out split (13 test views):
 
-   Measured with the depth prior **off** (step 0 — it is harmful here, see below):
+   Measured with the depth prior **off** (step 0 — it is harmful here, see step 3):
 
-   | `cap_max` | 750 k | 1.5 M | **3 M** |
-   |---|---|---|---|
-   | PSNR | 19.84 | 21.25 | **22.15** |
-   | SSIM | 0.8598 | 0.8664 | **0.8705** |
-   | LPIPS | 0.2843 | 0.2586 | **0.2434** |
+   | `cap_max` | 750 k | 1.5 M | 3 M | **6 M** | 12 M |
+   |---|---|---|---|---|---|
+   | PSNR | 19.84 | 21.25 | 22.15 | **23.41** | 23.27 |
+   | SSIM | 0.8598 | 0.8664 | 0.8705 | **0.8740** | 0.8733 |
+   | LPIPS | 0.2843 | 0.2586 | 0.2434 | 0.2260 | **0.2241** |
 
-   Read the *paired* per-view comparison, not the means: 750 k → 1.5 M is
-   **+1.41 dB, CI [+0.81, +2.01]** (12/13 views) and 1.5 M → 3 M is **+0.90 dB,
-   CI [+0.41, +1.39]** (11/13). Both real, so the curve is still climbing at 3 M — start
-   there and probe higher. Regenerate the curve and these statistics with:
+   Read the *paired* per-view comparison, not the means. Three doublings are all real —
+   750 k → 1.5 M **+1.41 dB** [+0.81, +2.01], 1.5 M → 3 M **+0.90 dB** [+0.41, +1.39],
+   3 M → 6 M **+1.26 dB** [+0.35, +2.18] — and then it stops: 6 M → 12 M is **−0.14 dB,
+   CI [−0.69, +0.41]**, a tie. **Use 6 M**; 12 M is tied at twice the size (3.8 GB vs
+   7.7 GB checkpoints). Regenerate the curve and these statistics with:
    ```bash
    python scripts/capacity_curve.py --out docs/assets/capacity_curve.png
    ```
@@ -111,7 +113,7 @@ single 4K clip; the multi-clip config is the one that needs appearance embedding
    The Pavillon's 375 k optimum does **not** transfer: copying it here costs more than two
    decibels. The transferable rule is the method, not the number.
 
-5. **Mesh.** Run `casque_2dgs.yaml` for a surface-aligned mesh; also export the 3DGS
+6. **Mesh.** Run `casque_2dgs.yaml` for a surface-aligned mesh; also export the 3DGS
    TSDF mesh (`export` emits `mesh.ply` automatically) and compare. Unlike the
    Pavillon, 2DGS has the multi-view coverage it needs here — it reaches **20.19 dB, a
    statistical tie with 3DGS** (−0.16 dB, CI [−1.26, +0.94]), which is the success

@@ -15,7 +15,7 @@ does not help · ⏭️ deliberately skipped.
 | **Resolution** (no downscale) | +1.8 dB, tail → 0 | Limited — only 1 of 4 clips is 4K | ➖ 2560 px, capped by 1080p clips |
 | **Anti-floater** (bounds + prune) | 18.2 % → 0 % haze | Yes | ✅ applied |
 | **Depth prior** (DepthAnything-v2) | nearly free (0.26 dB) | Assumed "low impact" — **wrong** | ❌ **hurts: −0.89 dB**, CI [+0.28, +1.51] off−on |
-| **Capacity** sweep | 375 k optimal (*less is more*) | **INVERTS** — an orbit is not sparse-view | ✅ **1.5 M** optimal (4× the Pavillon) |
+| **Capacity** sweep | 375 k optimal (*less is more*) | **INVERTS** — an orbit is not sparse-view | ✅ **6 M** optimal (**16×** the Pavillon) |
 | **MCMC** densification | parity, cleaner control | Yes | ✅ applied |
 | **Normal-consistency** | mesh coherence 0.81 → 0.92 | Yes (helmet mesh) | ✅ applied |
 | **Appearance embeddings** | unlocks multi-clip (+3 dB) | Multi-clip only | ✅ multi-clip · ❌ single-clip tie (−0.09 dB, CI [−0.60, +0.41]) |
@@ -36,33 +36,35 @@ safe to assume and are being measured rather than copied:
    overfit its low-parallax views. An orbit supplies real multi-view constraint, so the
    overfitting pressure is weaker and the optimum should be *higher*. It is:
 
-   | `cap_max` | 750 k | 1.5 M | 3 M | 6 M |
-   |---|---|---|---|---|
-   | with depth prior *(confounded)* | 19.49 | 20.35 | 20.76 | — |
-   | **no depth prior (recommended)** | 19.84 | 21.25 | 22.15 | **23.41** |
+   | `cap_max` | 750 k | 1.5 M | 3 M | **6 M** | 12 M |
+   |---|---|---|---|---|---|
+   | with depth prior *(confounded)* | 19.49 | 20.35 | 20.76 | — | — |
+   | **no depth prior (recommended)** | 19.84 | 21.25 | 22.15 | **23.41** | 23.27 |
 
    **A correction worth reading, because the confound changed the curve's shape and not
    just its level.** Measured *with* the depth prior — which every earlier number here
    used — 1.5 M → 3 M came out at **+0.41 dB, CI [−0.45, +1.26]**, a tie, and we
    concluded the curve "rises then plateaus" with 1.5 M as the operating point. With the
-   prior removed, both steps are significant:
+   prior removed, every doubling up to 6 M is significant:
 
    - 750 k → 1.5 M: **+1.41 dB, CI [+0.81, +2.01]**, 12/13 views
    - 1.5 M → 3 M: **+0.90 dB, CI [+0.41, +1.39]**, 11/13 views
    - 3 M → 6 M: **+1.26 dB, CI [+0.35, +2.18]**, 12/13 views
+   - 6 M → 12 M: **−0.14 dB, CI [−0.69, +0.41]**, 7/13 — **a tie**
 
-   There is no plateau. Every doubling is significant, the per-step gains are **not**
-   diminishing (+1.41, +0.90, +1.26), and the curve has still not turned at 6 M — a 12 M
-   probe is running. Budget utilisation confirms the model is really spending it: each run
-   ends at ~88 % of its cap (671 k, 1.32 M, 2.64 M, 5.27 M), the shortfall being the final
-   opacity prune, so MCMC is not saturating below the target.
+   Three significant doublings, then the curve flattens: **6 M is the operating point**,
+   with 12 M statistically tied at twice the size. The per-step gains do not decay on the
+   way up (+1.41, +0.90, +1.26), so the flattening at 6 M is a real ceiling rather than
+   slow saturation. Budget utilisation confirms the model really spends what it is given:
+   each run ends at ~88 % of its cap (671 k, 1.32 M, 2.64 M, 5.27 M, 10.64 M), the
+   shortfall being the final opacity prune.
 
    The prior's damage *grows with capacity* (+0.35 at 750 k, +0.89 at 1.5 M, +1.39 at 3 M),
    which is what flattened the top of the curve and manufactured the plateau: more
    primitives means more of them pulled toward the reflection-depths the prior supplies
    (see the depth-prior section below).
 
-   So the two captures differ by at least **16×** in optimal budget — 375 k versus ≥6 M —
+   So the two captures differ by **16×** in optimal budget — 375 k versus 6 M —
    which makes the inversion far starker than first measured. A plausible reading is that
    the quantity being sized is not "the object" but *the amount of observed scene content*:
    the Pavillon is one wall seen from one side with little parallax, while this capture is

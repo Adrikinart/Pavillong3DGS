@@ -89,15 +89,23 @@ train:
     stop_iteration: 15000
     interval: 100
     prune_opacity: 0.005
-    # MEASURED optimum for this capture (13 test views, paired per-view):
-    #   750k 19.49 | 1.5M 20.35 | 3M 20.76 dB
-    #   750k -> 1.5M  +0.86 dB, CI [+0.34, +1.39]  -> real
-    #   1.5M -> 3M    +0.41 dB, CI [-0.45, +1.26]  -> a TIE
-    # The curve rises then plateaus, so 1.5M is the operating point: 3M doubles the
-    # model for a gain inside the error bar. This INVERTS the Pavillon's 375k optimum --
-    # an orbit has real parallax, so surplus primitives are constrained rather than free
-    # to overfit. Re-sweep for any new capture; see scripts/capacity_curve.py.
-    cap_max: 1500000
+    # MEASURED optimum for this capture, with the depth prior OFF (13 test views):
+    #   750k 19.84 | 1.5M 21.25 | 3M 22.15 | 6M 23.41 | 12M 23.27 dB
+    #   750k ->  1.5M  +1.41 dB CI [+0.81, +2.01]  12/13  significant
+    #   1.5M ->   3M   +0.90 dB CI [+0.41, +1.39]  11/13  significant
+    #     3M ->   6M   +1.26 dB CI [+0.35, +2.18]  12/13  significant
+    #     6M ->  12M   -0.14 dB CI [-0.69, +0.41]   7/13  TIE  <- the curve finally flattens
+    # So 6M is the operating point: 12M is statistically tied and twice the size.
+    #
+    # This INVERTS the Pavillon's 375k optimum by 16x. An orbit supplies real parallax, so
+    # surplus primitives are constrained by multi-view evidence rather than free to overfit.
+    # Note we first measured a plateau at 1.5M -- that was an artifact of the depth prior,
+    # whose damage grows with capacity and flattened the top of the curve. Settle the rest
+    # of the config BEFORE sweeping. Re-sweep per capture; see scripts/capacity_curve.py.
+    #
+    # Cost of this choice: ~5.3M Gaussians, a 3.8 GB checkpoint. If storage or render speed
+    # matters more than the last decibel, 1.5M (973 MB) gives up ~2.2 dB.
+    cap_max: 6000000
     noise_lr: 5.0e5
   bounds:
     enabled: true

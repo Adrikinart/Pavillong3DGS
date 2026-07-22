@@ -2,9 +2,16 @@
 
 The single most transferable finding in this project is that the optimal Gaussian
 budget is a property of the *capture*, not of the framework: the Pavillon (single-sided,
-low parallax) peaks at 375 k and degrades above it, while the Casque (full orbit) climbs
-to 1.5 M and then plateaus. This script draws that comparison from the run directories so
+low parallax) peaks at **375 k** and degrades above it, while the Casque (full orbit)
+climbs all the way to **6 M** before turning -- a 16x difference between two captures run
+through the same pipeline. This script draws that comparison from the run directories so
 the figure can never drift from the numbers.
+
+It also plots the Casque sweep twice, with and without a monocular depth prior that turned
+out to be harmful. That is deliberate: the prior's damage grows with capacity, so it did
+not merely lower the curve, it flattened its top and made a still-climbing curve look like
+it plateaued at 1.5 M. Keeping both series visible is the honest record of a confound that
+changed a conclusion.
 
 Two things it deliberately does that an eyeballed curve does not:
 
@@ -54,7 +61,8 @@ SERIES = {
     "casque_nodepth": {
         "dataset": "casque_orbit_07ccd886",
         "runs": ["casque_nodepth_cap750k", "casque_nodepth",
-                 "casque_nodepth_cap3m", "casque_nodepth_cap6m"],
+                 "casque_nodepth_cap3m", "casque_nodepth_cap6m",
+                 "casque_nodepth_cap12m"],
         "label": "Casque orbit — no depth prior (recommended)",
     },
 }

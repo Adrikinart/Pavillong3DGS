@@ -341,18 +341,21 @@ measured, and **two of the three surprised us**.
   Regenerate with <code>python scripts/capacity_curve.py</code>.</em>
 </p>
 
-| Casque `cap_max` | 750 k | 1.5 M | 3 M | **6 M** |
-|---|---|---|---|---|
-| PSNR *(with depth prior — confounded)* | 19.49 | 20.35 | 20.76 | — |
-| **PSNR (no depth prior — recommended)** | 19.84 | 21.25 | 22.15 | **23.41** |
+| Casque `cap_max` | 750 k | 1.5 M | 3 M | **6 M** | 12 M |
+|---|---|---|---|---|---|
+| PSNR *(with depth prior — confounded)* | 19.49 | 20.35 | 20.76 | — | — |
+| **PSNR (no depth prior — recommended)** | 19.84 | 21.25 | 22.15 | **23.41** | 23.27 |
 
-Judged *paired* per view, with the prior removed, **every doubling is significant**:
-750 k → 1.5 M **+1.41 dB** (12/13), 1.5 M → 3 M **+0.90 dB** (11/13), 3 M → 6 M
-**+1.26 dB, CI [+0.35, +2.18]** (12/13). The gains are not even diminishing, and the curve
-has **still not turned at 6 M** (a 12 M probe is running). Each run really spends its
-budget — all end at ~88 % of cap, the rest being the final opacity prune.
+Judged *paired* per view, with the prior removed, **three successive doublings are all
+significant**: 750 k → 1.5 M **+1.41 dB** (12/13), 1.5 M → 3 M **+0.90 dB** (11/13),
+3 M → 6 M **+1.26 dB** (12/13). Then it stops: 6 M → 12 M is **−0.14 dB, CI
+[−0.69, +0.41]** (7/13) — a tie. **6 M is the operating point**, with 12 M tied at twice
+the size. Each run really spends its budget (all end at ~88 % of cap, the rest being the
+final opacity prune), so this is a genuine ceiling, not slow saturation.
 
-So the two captures differ by at least **16×** in optimal budget: **375 k vs ≥6 M**.
+So the two captures differ by **16×** in optimal budget: **375 k vs 6 M**. The practical
+cost is real — the 6 M model is a 3.8 GB checkpoint against the Pavillon's 90 MB; drop to
+1.5 M (973 MB) if storage matters more than the last 2.2 dB.
 
 **This corrects an earlier conclusion of ours.** Measured *with* the depth prior, that
 second step read as a tie (+0.41 dB, CI [−0.45, +1.26]) and we reported the curve as
