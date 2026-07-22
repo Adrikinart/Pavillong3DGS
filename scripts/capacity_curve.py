@@ -42,10 +42,20 @@ SERIES = {
                  "gsplat_hidetail_cap750k", "gsplat_hidetail_30k"],
         "label": "Pavillon (single-sided, low parallax)",
     },
+    # Two Casque series, because the depth prior turned out to change the curve's SHAPE and
+    # not merely its level. With the prior on, 1.5M -> 3M reads as a tie and the curve looks
+    # like it plateaus; with it off, both steps are significant and it is still climbing.
+    # Keeping both plotted is the point: the confound is visible rather than quietly fixed.
     "casque": {
         "dataset": "casque_orbit_07ccd886",
         "runs": ["casque_cap750k", "casque_gsplat", "casque_cap3m"],
-        "label": "Casque (full orbit, high parallax)",
+        "label": "Casque orbit — with depth prior (confounded)",
+    },
+    "casque_nodepth": {
+        "dataset": "casque_orbit_07ccd886",
+        "runs": ["casque_nodepth_cap750k", "casque_nodepth",
+                 "casque_nodepth_cap3m", "casque_nodepth_cap6m"],
+        "label": "Casque orbit — no depth prior (recommended)",
     },
 }
 
@@ -122,7 +132,8 @@ def main() -> int:
         return 1
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.4))
-    colors = {"pavillon": "#1f77b4", "casque": "#d62728"}
+    colors = {"pavillon": "#1f77b4", "casque": "#f0a3a3",
+              "casque_nodepth": "#d62728"}
 
     for name, (label, pts) in series.items():
         caps = [p["cap"] / 1e6 for p in pts]

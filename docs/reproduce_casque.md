@@ -47,6 +47,15 @@ single 4K clip; the multi-clip config is the one that needs appearance embedding
    python -m video_to_3dgs.cli inspect-video --config configs/pipeline/casque/casque.yaml
    ```
 
+0. **Turn the monocular depth prior OFF** (already set in the config). It helps the
+   Pavillon and costs almost nothing there, so we carried it over — but ablated here it
+   **loses 0.89 dB** (21.25 → 20.35, CI [+0.28, +1.51] for removing it, 9/13 views) and is
+   worse on SSIM and LPIPS too. DepthAnything is trained on ordinary photographs, so on a
+   mirror-like surface it predicts the depth of the *reflected scene* rather than of the
+   surface: a chrome helmet gets confidently wrong targets exactly where photometric
+   supervision is weakest, while the orbit's parallax already pins the geometry. Treat
+   monocular depth priors as suspect on any reflective subject.
+
 2. **Do NOT mask this capture** (a gate test settled it). rembg's salient-object model
    swings from 0.1% to 45% of the frame across the orbit — chrome reflections, a wispy
    horsehair plume and a competing stand defeat it. More importantly, the scene has a
@@ -77,21 +86,30 @@ single 4K clip; the multi-clip config is the one that needs appearance embedding
    ```
    Measured on the held-out split (13 test views):
 
-   | `cap_max` | 750 k | **1.5 M** | 3 M |
+   Measured with the depth prior **off** (step 0 — it is harmful here, see below):
+
+   | `cap_max` | 750 k | 1.5 M | **3 M** |
    |---|---|---|---|
-   | PSNR | 19.49 | **20.35** | 20.76 |
-   | SSIM | 0.8585 | 0.8636 | 0.8653 |
-   | LPIPS | 0.2892 | 0.2710 | 0.2612 |
+   | PSNR | 19.84 | 21.25 | **22.15** |
+   | SSIM | 0.8598 | 0.8664 | **0.8705** |
+   | LPIPS | 0.2843 | 0.2586 | **0.2434** |
 
    Read the *paired* per-view comparison, not the means: 750 k → 1.5 M is
-   **+0.86 dB, CI [+0.34, +1.39]** (real), while 1.5 M → 3 M is **+0.41 dB,
-   CI [−0.45, +1.26]** — a tie. So **1.5 M is the operating point**; 3 M doubles the
-   model for a gain inside the error bar. Regenerate the curve and these statistics with:
+   **+1.41 dB, CI [+0.81, +2.01]** (12/13 views) and 1.5 M → 3 M is **+0.90 dB,
+   CI [+0.41, +1.39]** (11/13). Both real, so the curve is still climbing at 3 M — start
+   there and probe higher. Regenerate the curve and these statistics with:
    ```bash
    python scripts/capacity_curve.py --out docs/assets/capacity_curve.png
    ```
-   The Pavillon's 375 k optimum does **not** transfer: copying it here costs over a
-   decibel. The transferable rule is the method, not the number.
+
+   > **Sweep with the rest of the config already settled.** Our first sweep ran with the
+   > depth prior on, whose damage grows with capacity (+0.35 dB at 750 k, +1.39 at 3 M).
+   > That flattened the top of the curve, so 1.5 M → 3 M read as a tie and we wrongly
+   > concluded the curve plateaued at 1.5 M. A confound that scales with the variable you
+   > are sweeping does not just shift the curve — it changes its shape.
+
+   The Pavillon's 375 k optimum does **not** transfer: copying it here costs more than two
+   decibels. The transferable rule is the method, not the number.
 
 5. **Mesh.** Run `casque_2dgs.yaml` for a surface-aligned mesh; also export the 3DGS
    TSDF mesh (`export` emits `mesh.ply` automatically) and compare. Unlike the

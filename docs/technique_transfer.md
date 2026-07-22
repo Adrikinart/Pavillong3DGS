@@ -38,19 +38,29 @@ safe to assume and are being measured rather than copied:
 
    | `cap_max` | 750 k | 1.5 M | 3 M |
    |---|---|---|---|
-   | test PSNR | 19.49 | **20.35** | 20.76 |
-   | SSIM | 0.8585 | 0.8636 | **0.8653** |
-   | LPIPS | 0.2892 | 0.2710 | **0.2612** |
+   | with depth prior *(confounded)* | 19.49 | 20.35 | 20.76 |
+   | **no depth prior (recommended)** | 19.84 | 21.25 | **22.15** |
 
-   Paired per-view tests over the 13 test views: 750 k → 1.5 M is **+0.86 dB, 95 % CI
-   [+0.34, +1.39]** (10/13 views improve) — real. 1.5 M → 3 M is **+0.41 dB, CI
-   [−0.45, +1.26]** (8/13) — **a tie**. So the Casque curve *rises then plateaus*
-   rather than turning, and **1.5 M is the operating point**: 3 M doubles the model for
-   a gain indistinguishable from noise.
+   **A correction worth reading, because the confound changed the curve's shape and not
+   just its level.** Measured *with* the depth prior — which every earlier number here
+   used — 1.5 M → 3 M came out at **+0.41 dB, CI [−0.45, +1.26]**, a tie, and we
+   concluded the curve "rises then plateaus" with 1.5 M as the operating point. With the
+   prior removed, both steps are significant:
 
-   Copying the Pavillon's 375 k here would have cost well over a decibel. The rule that
-   transfers is not the number but the method: **sweep capacity per capture, and read
-   the paired CI rather than the mean.**
+   - 750 k → 1.5 M: **+1.41 dB, CI [+0.81, +2.01]**, 12/13 views
+   - 1.5 M → 3 M: **+0.90 dB, CI [+0.41, +1.39]**, 11/13 views
+
+   So there is no plateau — the curve is **still climbing at 3 M**, and a 6 M probe is
+   running to find where it turns. The prior's damage *grows with capacity* (+0.35 at
+   750 k, +0.89 at 1.5 M, +1.39 at 3 M), which is what flattened the top of the curve and
+   manufactured the plateau: more primitives means more of them pulled toward the
+   reflection-depths the prior supplies (see the depth-prior section below).
+
+   The inversion versus the Pavillon is *strengthened*, not weakened — copying its 375 k
+   optimum here would now cost more than two decibels. And the methodological rule
+   survives its own correction: **sweep capacity per capture, read the paired CI rather
+   than the mean — and make sure nothing else in the configuration is fighting you**, or
+   the sweep measures the confound instead of the capacity.
 
 2. **2DGS works here — CONFIRMED, after one loss weight was fixed.** It collapsed on the
    Pavillon because a surface-aligned disk must recover a normal that a single-sided

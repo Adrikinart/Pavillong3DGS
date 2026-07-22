@@ -334,21 +334,32 @@ measured, and **two of the three surprised us**.
 
 <p align="center">
   <img src="docs/assets/capacity_curve.png" width="960" alt="Capacity sweep for both captures"><br>
-  <em>The same sweep on both objects. The curves run in opposite directions:
-  the low-parallax Pavillon degrades with capacity, the orbit improves with it.
+  <em>The same sweep on both objects. The curves run in opposite directions: the
+  low-parallax Pavillon degrades with capacity, the orbit improves with it. The pale red
+  series is the same orbit sweep measured with a depth prior that turned out to be
+  harmful — kept visible because it changed the curve's <em>shape</em>.
   Regenerate with <code>python scripts/capacity_curve.py</code>.</em>
 </p>
 
-| Casque `cap_max` | 750 k | **1.5 M** | 3 M |
+| Casque `cap_max` | 750 k | 1.5 M | **3 M** |
 |---|---|---|---|
-| PSNR | 19.49 | **20.35** | 20.76 |
-| LPIPS | 0.2892 | 0.2710 | 0.2612 |
+| PSNR *(with depth prior — confounded)* | 19.49 | 20.35 | 20.76 |
+| **PSNR (no depth prior — recommended)** | 19.84 | 21.25 | **22.15** |
 
-Judged *paired* per view: 750 k → 1.5 M is **+0.86 dB, CI [+0.34, +1.39]** (real);
-1.5 M → 3 M is **+0.41 dB, CI [−0.45, +1.26]** — a **tie**. So the curve rises then
-plateaus, and **1.5 M is the operating point**: 3 M doubles the model for a gain inside
-the error bar. Copying the Pavillon's 375 k here would have cost over a decibel.
-**The number does not transfer; the method does — sweep per capture, and read the CI.**
+Judged *paired* per view, with the prior removed: 750 k → 1.5 M is **+1.41 dB, CI
+[+0.81, +2.01]** (12/13 views) and 1.5 M → 3 M is **+0.90 dB, CI [+0.41, +1.39]**
+(11/13). Both real — the curve is **still climbing at 3 M**, and a 6 M probe is running.
+
+**This corrects an earlier conclusion of ours.** Measured *with* the depth prior, that
+second step read as a tie (+0.41 dB, CI [−0.45, +1.26]) and we reported the curve as
+"rises then plateaus" with 1.5 M as the operating point. The prior's damage grows with
+capacity (+0.35 dB at 750 k, +0.89 at 1.5 M, +1.39 at 3 M), which flattened the top of
+the curve and manufactured that plateau. The inversion versus the Pavillon is
+*strengthened*: copying its 375 k here now costs more than two decibels.
+
+**The number does not transfer; the method does — sweep per capture, read the paired CI,
+and make sure nothing else in the config is fighting you**, or the sweep measures the
+confound rather than the capacity.
 
 **2. 2DGS works here — but only after the metric was disbelieved.**
 
