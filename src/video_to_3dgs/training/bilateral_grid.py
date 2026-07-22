@@ -40,6 +40,8 @@ class BilateralGrid(nn.Module):
     so an all-zero grid is exactly a no-op at initialisation.
     """
 
+    # NOTE: do not name any helper ``_apply`` - nn.Module._apply is the internal
+    # hook used by .to()/.cuda()/.float(), and shadowing it breaks device moves.
     def __init__(self, n_images: int, grid_w: int = 16, grid_h: int = 16,
                  grid_l: int = 8):
         super().__init__()
@@ -50,7 +52,7 @@ class BilateralGrid(nn.Module):
     # ------------------------------------------------------------------ #
     def forward(self, image_index: int, rgb: torch.Tensor) -> torch.Tensor:
         """Apply image ``image_index``'s grid to an (H,W,3) render."""
-        return self._apply(self.grids[image_index], rgb)
+        return self._apply_grid(self.grids[image_index], rgb)
 
     def canonical(self, rgb: torch.Tensor, indices=None) -> torch.Tensor:
         """Apply the mean grid of a subset (default: all images).
@@ -62,10 +64,15 @@ class BilateralGrid(nn.Module):
         g = self.grids if indices is None or len(indices) == 0 else \
             self.grids[torch.as_tensor(list(indices), device=self.grids.device,
                                        dtype=torch.long)]
-        return self._apply(g.mean(dim=0), rgb)
+        return self._apply_grid(g.mean(dim=0), rgb)
+
+    def canonical_for(self, rgb: torch.Tensor, indices) -> torch.Tensor:
+        """API-compatible with :class:`AppearanceModel`: score a held-out view under
+        the mean appearance of its own source clip."""
+        return self.canonical(rgb, indices)
 
     # ------------------------------------------------------------------ #
-    def _apply(self, grid: torch.Tensor, rgb: torch.Tensor) -> torch.Tensor:
+    def _apply_grid(self, grid: torch.Tensor, rgb: torch.Tensor) -> torch.Tensor:
         h, w, _ = rgb.shape
         dev, dt = rgb.device, rgb.dtype
 

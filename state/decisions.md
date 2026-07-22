@@ -178,6 +178,39 @@ views while enlarging the reconstructed volume (point extent [2.53, 9.61, 8.7]),
 
 Conclusion: keep `gsplat_hidetail_30k` as the deliverable.
 
+### Three evidence-ranked follow-ups (one soft win, two informative nulls)
+
+**Depth-normal consistency (`train.normal_consistency`) — helps the GEOMETRY, not the
+renders.** GSDF/GOF proper need a second SDF branch / custom rasteriser (neither ships
+with gsplat); this is the self-consistency term they use internally, on ordinary 3D
+Gaussians: composite each Gaussian's least-variance axis into a normal map (via
+sh_degree=None direct colours) and match it to the depth-implied normal. On renders it
+is a null: paired +0.06 +/- 0.21 dB. But the extracted MESH is markedly cleaner ---
+normal coherence **0.81 -> 0.92**, fewer sliver triangles, and 32% fewer vertices for
+the same object (953k -> 648k). Judging it by PSNR would have discarded a real result;
+it is the right default when a mesh is wanted. The normal loss itself does not converge
+(0.088 -> 0.096) because its target moves as the geometry evolves.
+
+**Bilateral-grid appearance (`appearance_model: bilateral`) — nothing to correct
+here.** The affine model applies one transform per image; the bilateral grid can vary
+spatially. On the two-clip merge it is indistinguishable from affine (paired
+-0.15 +/- 0.37 dB), and the diagnostic says why: the grid's drift settles at 0.013 vs
+the affine model's 0.072, i.e. it barely leaves identity because the inter-clip
+difference is a GLOBAL exposure/WB shift the affine map already captures. Not "bilateral
+grids don't help" but "this capture has no spatially varying response". Vignetting or
+mixed lighting would change that. Implementation note: a helper named `_apply` shadowed
+`nn.Module._apply` (the .to()/.cuda() hook) and broke the device move minutes into the
+GPU run; CPU tests missed it, so a device-move regression test now guards it.
+
+**Multi-clip capacity curve completed.** At the single-clip optimum (375k) the merge
+reaches its best: **22.99 / 0.847 / 18% catastrophic**, monotone with every lower
+budget (3.0M 21.36 -> 1.5M 22.03 -> 750k 22.37 -> 375k 22.99). The per-clip split shows
+the ORIGINAL clip's views recovering from 21.8 to 23.0, now matching the added clip ---
+so correct capacity closed most of the merge deficit that earlier looked structural.
+The residual ~1.9 dB gap to single-clip (24.92) is on a larger, harder 33-view split.
+Confirms the capacity finding transfers across datasets, and reframes multi-clip from
+"loses ~1 dB" to "competitive once capacity is set correctly".
+
 ### 3DGS-MCMC densification: implemented, and at parity with the heuristic
 `densification.strategy: mcmc` was a declared-but-unread flag; gsplat 1.5.3 ships
 `MCMCStrategy`, so this was implementation rather than research. MCMC treats

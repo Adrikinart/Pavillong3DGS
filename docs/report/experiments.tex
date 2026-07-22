@@ -79,6 +79,8 @@ cap 375\,k, \textbf{MCMC}      &   365\,497 & 24.83 & \textbf{25.32} & \textbf{0
 cap 3.0\,M                     & 2\,502\,172 & 21.36 & 21.23 & 0.8243 & 0.3460 & 33\,\% \\
 cap 1.5\,M                     & 1\,225\,089 & 22.03 & 22.82 & 0.8332 & 0.3420 & 24\,\% \\
 cap 750\,k                     &   637\,412 & 22.37 & 23.52 & 0.8396 & 0.3350 & 21\,\% \\
+cap 375\,k                     &   332\,363 & \textbf{22.99} & 23.44 & \textbf{0.8468} & 0.3354 & \textbf{18\,\%} \\
+cap 750\,k, bilateral grid     &   635\,978 & 22.22 & --- & 0.8383 & 0.3338 & --- \\
 \bottomrule
 \end{tabular}
 \caption{All trained models. \textbf{Rows in different blocks are not directly
@@ -155,6 +157,24 @@ result is nonetheless informative: it indicates the large gain in
 allocated, which is what the sparse-view overfitting account predicts. MCMC remains
 preferable operationally, since it eliminates the gradient threshold and makes the
 budget an explicit target rather than an emergent ceiling.
+
+\paragraph{Geometry regularisation and appearance capacity.}
+Three further interventions were tested on the best configuration. \emph{(i)}
+Depth--normal consistency --- the self-consistency term surface-aligned methods use
+internally, applied to 3D Gaussians by compositing each primitive's least-variance
+axis into a normal map and matching it against the depth-implied normal --- leaves
+renders unchanged ($+0.06\pm0.21$\,dB) but produces a markedly cleaner extracted
+\emph{mesh}: normal coherence rises from 0.81 to 0.92 with 32\,\% fewer vertices for
+the same object. It is the right default when a mesh is the goal, and a null when only
+novel views are. \emph{(ii)} A bilateral-grid appearance model, able to represent
+spatially varying response, is indistinguishable from the global-affine model on the
+two-clip merge ($-0.15\pm0.37$\,dB); its correction barely departs from identity
+(drift 0.013 vs 0.072), because the inter-clip difference is a global exposure shift
+the affine map already captures. \emph{(iii)} Completing the multi-clip capacity curve
+to 375\,k gives the merge its best result (22.99\,/\,0.847), monotone with the
+single-clip finding, and the per-clip breakdown shows the original clip's views
+recovering to parity with the added clip --- so most of the apparent merge deficit was
+budget dilution, not the merge itself.
 
 \paragraph{Two measurement bugs worth reporting.}
 Both would have silently corrupted conclusions. First, the blur filter scored

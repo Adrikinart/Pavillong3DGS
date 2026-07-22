@@ -91,3 +91,36 @@ def test_tv_loss_penalises_a_rough_grid():
     with torch.no_grad():
         bg.grids.add_(torch.randn_like(bg.grids))
     assert bg.tv_loss().item() > 0.1
+
+
+def test_module_survives_a_device_move():
+    """Regression: a helper named ``_apply`` shadows ``nn.Module._apply``, the hook
+    PyTorch uses for .to()/.cuda()/.float(). The collision is invisible on CPU-only
+    tests and only explodes when the model is moved to the GPU, minutes into a run.
+    """
+    bg = BilateralGrid(2).to("cpu").float()
+    rgb = _img()
+    assert torch.allclose(bg(0, rgb), rgb, atol=1e-6)
+    assert BilateralGrid._apply is torch.nn.Module._apply, \
+        "do not shadow nn.Module._apply"
+
+
+def test_api_matches_the_affine_appearance_model():
+    """Both appearance models are used interchangeably by the trainer and the
+    evaluate stage, so they must expose the same surface."""
+    from video_to_3dgs.training.appearance import AppearanceModel
+    bg, af = BilateralGrid(3), AppearanceModel(3)
+    for name in ("forward", "canonical", "canonical_for", "drift"):
+        assert hasattr(bg, name) and hasattr(af, name), f"missing {name}"
+    rgb = _img()
+    assert torch.allclose(bg.canonical_for(rgb, [0, 1]), rgb, atol=1e-6)
+
+
+def test_state_round_trips_for_resume():
+    a = BilateralGrid(2)
+    with torch.no_grad():
+        a.grids.add_(torch.randn_like(a.grids) * 0.1)
+    b = BilateralGrid(2)
+    b.load_state_dict(a.state_dict())
+    rgb = _img()
+    assert torch.allclose(a(1, rgb), b(1, rgb), atol=1e-6)

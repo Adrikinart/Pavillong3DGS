@@ -72,7 +72,8 @@ each group has its own SfM solution, held-out split and resolution.
 |---|---|---:|---:|---:|---:|---:|---:|
 | cap 3.0 M | `pavillon_multiclip_cap3m` | 21.36 | 21.23 | 0.824 | 0.346 | 33 % | 2.50 M |
 | cap 1.5 M · ADC | `pavillon_multiclip` | 22.03 | 22.82 | 0.833 | 0.342 | 24 % | 1.23 M |
-| cap 750 k · ADC | `pavillon_multiclip_cap750k` | **22.37** | **23.52** | **0.840** | **0.335** | **21 %** | 0.64 M |
+| cap 750 k · ADC | `pavillon_multiclip_cap750k` | 22.37 | 23.52 | 0.840 | 0.335 | 21 % | 0.64 M |
+| **cap 375 k · ADC** | `pavillon_multiclip_cap375k` | **22.99** | **23.44** | **0.847** | 0.335 | **18 %** | 0.33 M |
 
 > ⚠️ **These rows are not all directly comparable.** The high-detail and multi-clip
 > models are separate datasets with their own COLMAP, their own held-out splits and
@@ -192,8 +193,9 @@ detail) and motivated the high-detail run.
 
 <p align="center">
   <img src="docs/assets/mesh_preview.png" width="900" alt="Extracted relief mesh"><br>
-  <em>TSDF-fused triangle mesh (1.39 M verts / 2.62 M tris) — the panel's planks and
-  carved cross-members are resolved</em>
+  <em>TSDF-fused triangle mesh — the panel's planks and carved cross-members are
+  resolved. Adding depth-normal consistency (`train.normal_consistency`) raises surface
+  normal coherence from 0.81 to 0.92.</em>
 </p>
 
 `export` also writes `mesh.ply`, produced by fusing the model's own composited depth
@@ -209,6 +211,23 @@ Every run also writes `videos/orbit.mp4` (front-arc novel-view sweep) and
 are run artifacts and are not committed — the pipeline regenerates them.
 
 ---
+
+## Further experiments (implemented, mostly informative nulls)
+
+Three evidence-ranked follow-ups from the literature review. All are config flags; none
+required changing the deliverable.
+
+| Experiment | Flag | Result |
+|---|---|---|
+| **3DGS-MCMC** densification | `densification.strategy: mcmc` | **Tie** with the heuristic at the same budget (−0.09 ± 0.45 dB). Confirms the capacity gain is about the *budget*, not how it's allocated. Preferred default operationally — no `grad_threshold`. |
+| **Depth–normal consistency** | `train.normal_consistency` | Renders unchanged (+0.06 ± 0.21 dB), but the extracted **mesh is cleaner**: normal coherence 0.81 → **0.92**, 32 % fewer vertices. Turn it on when you want a mesh. |
+| **Bilateral-grid appearance** | `appearance_model: bilateral` | **Tie** with the affine model (−0.15 ± 0.37 dB) — this capture has no *spatially varying* response, only a global exposure shift the affine map already fixes (grid drift 0.013 vs 0.072). |
+| **Multi-clip at 375 k** | `pavillon_multiclip_cap375k` | The merge's **best** result (22.99). Correct capacity recovered the original clip's views to parity with the added clip — most of the earlier merge deficit was budget dilution, not the merge. |
+| **Pose refinement** | `train.pose_optimization` | **−1 dB.** GLOMAP's poses were already 0.92 px; there was no error to recover. |
+
+All differences within a dataset that fall inside ±~0.45 dB are reported as ties, not
+wins — with 28–33 test views the paired confidence interval is that wide, and reporting
+a mean-only "winner" would overclaim.
 
 ## Settings of the recommended model
 

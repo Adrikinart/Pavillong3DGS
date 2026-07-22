@@ -68,15 +68,20 @@ class EvaluateStage(Stage):
             try:
                 state = torch.load(ckpt, map_location="cpu", weights_only=False)
                 sd = (state.get("extra") or {}).get("appearance")
-                if sd:
+                if sd and "grids" in sd:                    # bilateral grid
+                    from ..training.bilateral_grid import BilateralGrid
+                    n, _, gl, gh, gw = sd["grids"].shape
+                    app_model = BilateralGrid(n, grid_w=gw, grid_h=gh, grid_l=gl).to(device)
+                elif sd:                                     # affine latents
                     app_model = AppearanceModel(sd["embed.weight"].shape[0],
                                                 dim=sd["embed.weight"].shape[1]).to(device)
+                if sd:
                     app_model.load_state_dict(sd)
                     app_model.eval()
                     for j, s in enumerate(train_ds.samples):
                         clip_to_train_idx.setdefault(clip_key(s.name), []).append(j)
-                    ctx.logger.info("appearance model restored (%d latents, clips: %s)",
-                                    sd["embed.weight"].shape[0],
+                    ctx.logger.info("appearance model restored (%s, clips: %s)",
+                                    type(app_model).__name__,
                                     ", ".join(sorted(clip_to_train_idx)))
             except Exception as e:  # noqa: BLE001
                 ctx.logger.warning("could not restore appearance model: %s", e)
