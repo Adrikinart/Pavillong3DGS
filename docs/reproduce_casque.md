@@ -16,10 +16,10 @@ therefore call for opposite settings.
 
 | Axis | Pavillon (scene) | Casque (object) | Consequence |
 |---|---|---|---|
-| Coverage | single-sided, low parallax | **full orbit**, high parallax | more Gaussian capacity is fine — do **not** copy 375k |
+| Coverage | single-sided, low parallax | **full orbit**, high parallax | more capacity: **1.5 M**, not the Pavillon's 375k |
 | Subject vs scene | relief carved *into* a wall | **free-standing** helmet | isolate the helmet **in 3D** (crop), not by mask — see below |
 | Cameras | one iPhone clip | **pro camera + iPhone** | **appearance embeddings** reconcile the two responses |
-| Surface method | 2DGS failed (no multi-view normals) | multi-view surface | **2DGS should work** — try it for the mesh |
+| Surface method | 2DGS failed (no multi-view normals) | multi-view surface | **2DGS works** (with `dist_lambda: 0`) — use it for the mesh |
 | Interest | the whole panel | the **helmet only** | spatial crop to the helmet; 360° orbit video |
 
 The two things carried over from the Pavillon: **normal-consistency** (a cleaner mesh)

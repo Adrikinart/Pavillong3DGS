@@ -9,7 +9,7 @@
 #   relief carved INTO a wall            free-standing helmet       -> isolate in 3D (crop)
 #   one iPhone clip                      pro camera + iPhone        -> appearance embeds
 #   2DGS failed (no multi-view normals)  multi-view surface         -> 2DGS should WORK
-#   cap_max 375k optimal (overfitting)   good coverage              -> start ~1.5M, tune UP
+#   cap_max 375k optimal (overfitting)   good coverage              -> 1.5M MEASURED optimal
 #
 # Kept from the Pavillon: normal-consistency (cleaner mesh) and the anti-floater prune.
 # The helmet is isolated SPATIALLY (crop box / tight train.bounds) rather than by a
@@ -89,8 +89,16 @@ train:
     stop_iteration: 15000
     interval: 100
     prune_opacity: 0.005
-    cap_max: 1500000         # good coverage -> more capacity than the Pavillon's 375k;
-    noise_lr: 5.0e5          #   run a short capacity probe (see docs/reproduce_casque.md)
+    # MEASURED optimum for this capture (13 test views, paired per-view):
+    #   750k 19.49 | 1.5M 20.35 | 3M 20.76 dB
+    #   750k -> 1.5M  +0.86 dB, CI [+0.34, +1.39]  -> real
+    #   1.5M -> 3M    +0.41 dB, CI [-0.45, +1.26]  -> a TIE
+    # The curve rises then plateaus, so 1.5M is the operating point: 3M doubles the
+    # model for a gain inside the error bar. This INVERTS the Pavillon's 375k optimum --
+    # an orbit has real parallax, so surplus primitives are constrained rather than free
+    # to overfit. Re-sweep for any new capture; see scripts/capacity_curve.py.
+    cap_max: 1500000
+    noise_lr: 5.0e5
   bounds:
     enabled: true
     margin: 0.5
