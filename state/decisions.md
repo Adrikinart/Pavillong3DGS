@@ -178,6 +178,32 @@ views while enlarging the reconstructed volume (point extent [2.53, 9.61, 8.7]),
 
 Conclusion: keep `gsplat_hidetail_30k` as the deliverable.
 
+### Casque (second object): a different capture, and the object box is a negative
+The Casque Saint-Georges is the opposite capture to the Pavillon: a full ORBIT of a
+free-standing reflective helmet shot with a pro camera + iPhone. Gates (fail-fast):
+- Footage survey: the "pro" clips are only 1080p; IMG_8281 is the sole 4K clip -> start
+  single-clip from it.
+- MASK gate: rembg swings 0.1-45% across the orbit (chrome + wispy plume + stand defeat
+  salient segmentation), and the scene has a CHECKERBOARD calibration target - the best
+  SfM features present, while the chrome helmet has almost none. Masking would delete
+  the features that give good poses. So reconstruct the FULL scene, isolate the helmet
+  spatially (it is free-standing). Masks off + full-frame GLOMAP -> 134/136 @ 0.97px.
+- Baseline (single 4K clip, full scene): test 20.35 / 0.864 / 0.271. The helmet itself
+  reconstructs well on inspection (gold crest sharp, chrome plausible via SH-3, plume
+  soft); the low PSNR is the deliberately-ignored blurry background. ~50% of the budget
+  sat on the room.
+
+**Object box during training = negative.** Implemented train.bounds.box_center/half_extent
+(the user's "attractive box") and retrained with a tight helmet box. Full-frame dropped
+20.35 -> 17.01, and the helmet-region comparison was confounded (the helmet fills the
+frame at this camera distance, mask ~100%). The VISUAL is decisive: the helmet is no
+sharper, and the box adds radial boundary smearing. Same lesson as the Pavillon capacity
+sweep from the other side - the helmet is DATA-limited (136 frames, reflective), not
+budget-limited, and with masks off the box fights the photometric loss over the visible
+background. Isolate the helmet by CROPPING at export, not by pruning in training. The
+box feature is kept for genuinely mask-separable objects. The real lever is coverage:
+next run adds the pro + long-orbit clips with appearance embeddings.
+
 ### Generative diffusion priors do NOT help this capture (measured, decisive)
 The single-sided panel cannot be re-shot in orbit (physical constraint: it is against
 a wall), so the natural remaining lever was a generative prior for under-constrained

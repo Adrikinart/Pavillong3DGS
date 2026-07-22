@@ -1,37 +1,23 @@
-# Casque Saint-Georges — object-centric orbit reconstruction.
-#
-# This capture is the OPPOSITE of the Pavillon on almost every axis, so several
-# hard-won Pavillon settings are deliberately inverted here:
-#
-#   Pavillon (scene)                     Casque (object)
-#   -----------------------------------  -----------------------------------------
-#   single-sided, low parallax           full ORBIT, high parallax  -> more capacity OK
-#   relief carved INTO a wall            free-standing helmet       -> isolate in 3D (crop)
-#   one iPhone clip                      pro camera + iPhone        -> appearance embeds
-#   2DGS failed (no multi-view normals)  multi-view surface         -> 2DGS should WORK
-#   cap_max 375k optimal (overfitting)   good coverage              -> start ~1.5M, tune UP
-#
-# Kept from the Pavillon: normal-consistency (cleaner mesh) and the anti-floater prune.
-# The helmet is isolated SPATIALLY (crop box / tight train.bounds) rather than by a
-# mask -- see the generate_masks note below for why. An attractive object box is a
-# sensible refinement here, since the helmet is separable in 3D.
-object_name: casque_orbit
+# Casque -- MULTI-CLIP coverage: the real quality lever.
+# The single-clip helmet was data-limited (136 usable frames after 66% blur rejection),
+# and concentrating the budget via an object box did NOT help. Adding the pro clips and
+# the long iPhone orbit adds genuine angles; appearance embeddings reconcile the
+# pro-vs-iPhone colour response (the mechanism validated on the Pavillon merge).
+object_name: casque_multiclip
 capture_mode: orbit
 profile:
   name: rtxpro
   nodelist: GPURACK2
-# Pro camera (102A25xx) + iPhone (IMG_8xxx) orbits. Curate to the clean full orbits;
-# short/hand-held establishing clips can hurt. Verify each with `inspect-video`.
-# Footage survey: the "pro" clips (102A25xx) are only 1080p; IMG_8281 is the single
-# 4K clip (3840x2160, 154s orbit) and the detail winner. Start from it ALONE for a
-# clean baseline (the Pavillon lesson), then add clips + appearance for coverage.
 videos:
-  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/IMG_8281.MOV"
+  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/IMG_8281.MOV"   # 4K iphone
+  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/102A2544.MOV"   # pro 183s
+  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/102A2545.MOV"   # pro 133s
+  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/IMG_8280.MOV"   # iphone 420s
 
 extract_frames:
   strategy: fixed_fps
   target_fps: 3.0
-  max_frames: 400            # across all clips; orbit coverage is the point
+  max_frames: 900            # 4 clips: more angles = more coverage (the real lever)
   min_frames: 80
   resize_long_edge: 2560     # Pavillon lesson: keep native detail (pro camera is 4K+)
 
@@ -39,16 +25,6 @@ filter_frames:
   enabled: true
   blur_var_min: 50.0         # now measured at a fixed reference scale (resolution-safe)
 
-# Masking is OFF, deliberately, and this is the opposite of what "I only want the
-# helmet" first suggests. A mask-gate test showed two things: (1) rembg is unreliable
-# on this subject -- chrome reflections, a wispy horsehair plume and a competing stand
-# make salient-object segmentation swing from 0.1% to 45% of the frame across the
-# orbit; (2) the scene contains a CHECKERBOARD calibration target, which is the best
-# SfM feature source present, while the chrome helmet itself has almost no stable
-# features. Masking would discard exactly the features that give accurate poses. So we
-# reconstruct the FULL scene (great registration) and isolate the free-standing helmet
-# SPATIALLY afterwards (crop box / tight train.bounds) -- which works here precisely
-# because, unlike the wall-embedded Pavillon relief, the helmet is separable in 3D.
 generate_masks:
   enabled: false
 
@@ -56,7 +32,7 @@ run_colmap:
   matcher: exhaustive        # orbit + multi-source: no single temporal ordering
   mapper_backend: glomap     # robust global SfM (2.2x registration on the Pavillon)
   camera_model: OPENCV
-  single_camera: true        # single clip to start; false when mixing cameras
+  single_camera: false       # pro camera + iPhone have different intrinsics
   use_masks: false           # use the checkerboard + room: the helmet has few features
   sequential_overlap: 15
 
@@ -72,7 +48,7 @@ split_dataset:
 
 train:
   backend: gsplat
-  train_run_id: casque_gsplat
+  train_run_id: casque_multiclip
   max_iterations: 30000
   sh_degree: 3
   use_masks: false           # full scene; isolate the helmet at export (crop)
@@ -81,7 +57,7 @@ train:
   validation_interval: 1000
   # Two cameras with different colour response -> reconcile with per-image latents.
   # This is the mechanism validated on the Pavillon multi-clip merge.
-  appearance_embedding: false  # single clip; turn ON when adding the pro/other clips
+  appearance_embedding: true   # reconcile pro-vs-iPhone colour response (the built+validated mechanism)
   appearance_model: affine   # try bilateral only if vignetting/spatial response appears
   densification:
     strategy: mcmc           # explicit budget target; no grad_threshold to tune
