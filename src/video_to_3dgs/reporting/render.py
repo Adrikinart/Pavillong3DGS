@@ -13,7 +13,7 @@ class CheckpointRenderer:
 
     def __init__(self, layout, train_run_id: str, sh_degree: int, device: str = "cuda",
                  near: float = 0.01, far: float = 1e10, crop_box: dict | None = None,
-                 crop_margin: float = 0.1):
+                 crop_margin: float = 0.1, object_crop_scale: float | None = None):
         import torch  # noqa: F401
 
         from ..training.checkpoint import find_latest_valid, load_checkpoint
@@ -41,6 +41,21 @@ class CheckpointRenderer:
         self.near = near
         self.far = far
         self._crop = None
+        # For an orbit capture, prefer a box measured from the rig over the stored one.
+        # ``crop_box_normalized`` is derived from the full point cloud, so on an object
+        # filmed inside a room it spans the room (on the Casque: 6.1 units across one
+        # axis versus ~1.2 on the others) and therefore removes no floaters at all. The
+        # rig-derived box is centred on the subject and scaled by the capture's own
+        # camera distance, which is the only length scale available without knowing the
+        # object's size.
+        if object_crop_scale:
+            from . import cameras as _cam
+            geom = _cam.capture_geometry(ds)
+            if geom.is_orbit:
+                half = object_crop_scale * geom.cam_distance
+                crop_box = {"min": (geom.center - half).tolist(),
+                            "max": (geom.center + half).tolist()}
+                crop_margin = 0.0
         if crop_box:
             import numpy as _np
             self._crop = (_np.array(crop_box["min"]) - crop_margin,

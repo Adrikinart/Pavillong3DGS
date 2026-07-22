@@ -26,18 +26,39 @@ def _even(img: np.ndarray) -> np.ndarray:
 
 def orbit_video(renderer, out: Path, *, n_frames: int = 120, elevation_deg: float = 12.0,
                 arc_deg: float = 80.0, fps: int = 30, width: int = 960,
-                height: int = 540, framing_margin: float = 1.2) -> Path | None:
-    """Render a FRONT-FACING ARC that frames the whole object (pulled back to fit
-    it in view). A full 360 is avoided because single-side captures never saw the
-    back; the arc sweeps across the captured front to reveal relief via parallax."""
+                height: int = 540, framing_margin: float = 1.2,
+                orbit_radius_scale: float = 1.0) -> Path | None:
+    """Render a novel-view fly-around, choosing the path from the measured rig geometry.
+
+    Two cases, because one path cannot serve both captures:
+
+    * **Orbit capture** (cameras ring the subject): a true closed 360 turntable about the
+      point where the optical axes converge, at the *capture's own* median camera
+      distance. Reusing that distance is what fixes framing without needing to estimate
+      the object's size -- the photographer already chose a distance that frames the
+      subject well, and matching it reproduces their framing. Sizing the shot from the
+      scene bounding box instead frames the whole room, which on the Casque left the
+      helmet a few pixels wide inside a black frame.
+    * **Single-sided capture**: the original front-facing arc. A full 360 is meaningless
+      there because the back was never observed, and the arc sweeps the captured face to
+      reveal relief through parallax.
+    """
     from . import cameras as cam_mod
 
     src = renderer.dataset.samples[0]
     K = cam_mod.resize_intrinsics(src.K, (src.width, src.height), (width, height))
-    obj = cam_mod.object_frame_from_dataset(renderer.dataset, K, width, height,
-                                            margin=framing_margin)
-    path = cam_mod.front_arc_path(obj, K, width, height, n_frames=n_frames,
-                                  arc_deg=arc_deg, elevation_deg=elevation_deg)
+    geom = cam_mod.capture_geometry(renderer.dataset)
+
+    if geom.is_orbit:
+        path = cam_mod.orbit_path(geom.center, geom.up, geom.cam_distance, K,
+                                  width, height, n_frames=n_frames,
+                                  elevation_deg=elevation_deg,
+                                  radius_scale=orbit_radius_scale)
+    else:
+        obj = cam_mod.object_frame_from_dataset(renderer.dataset, K, width, height,
+                                                margin=framing_margin)
+        path = cam_mod.front_arc_path(obj, K, width, height, n_frames=n_frames,
+                                      arc_deg=arc_deg, elevation_deg=elevation_deg)
     w = _writer(out, fps)
     try:
         for c in path:

@@ -26,8 +26,8 @@
 
 - status: COMPLETED, final step: 29999
 - best val PSNR: 20.421
-- duration: 2551.47 s
+- duration: 1968.54 s
 
 ## Provenance
 
-- git: `b39334a198a4789e086c5fcca86cbd0589265b6a` | torch 2.13.0+cu130 (cuda 13.0) | GPU NVIDIA RTX PRO 4500 Blackwell
+- git: `9082abd42b89de473f55346a67bf28532a9b7734` | torch 2.13.0+cu130 (cuda 13.0) | GPU NVIDIA RTX PRO 4500 Blackwell

@@ -79,6 +79,75 @@ def orbit_path(center: np.ndarray, up: np.ndarray, radius: float, K: np.ndarray,
 
 
 @dataclass
+class CaptureGeometry:
+    """What the camera rig was actually doing, measured rather than declared.
+
+    The two captures in this project need opposite novel-view paths, and the config
+    cannot be trusted to say which is which (``capture_mode`` defaults to ``orbit`` and
+    was left at that for a single-sided capture). These fields are derived from the
+    poses themselves.
+    """
+    center: np.ndarray        # where the optical axes converge = the subject
+    up: np.ndarray
+    cam_distance: float       # median camera distance to that centre
+    inwardness: float         # 0 = all cameras look the same way, 1 = perfectly inward
+    is_orbit: bool
+
+
+def capture_geometry(dataset, orbit_threshold: float = 0.4) -> CaptureGeometry:
+    """Measure the subject location and whether the rig orbits it.
+
+    *Centre* is the least-squares point closest to every optical axis. For an orbit this
+    is the subject by construction -- the photographer keeps it centred in frame -- and,
+    crucially, it depends only on camera *orientations*. That matters here: the obvious
+    alternative, taking the centroid of the sparse point cloud, finds whatever is most
+    textured, which on the Casque is the checkerboard calibration target rather than the
+    nearly featureless chrome helmet.
+
+    *Inwardness* is ``1 - |mean(view direction)|``. Cameras ringing a subject look inward
+    from all sides, so their direction vectors cancel; cameras sweeping one face of a wall
+    all point the same way and their mean stays near unit length. Measured: 0.61/0.75 for
+    the two orbit captures, 0.15/0.14 for the two single-sided ones -- a wide margin, so
+    the threshold is not delicately placed.
+
+    Note that *azimuth coverage* does not work as a discriminator: both capture types
+    score above 300 degrees, because on a single-sided sweep the axes converge at a point
+    inside the camera swarm and the cameras surround it as seen from there.
+    """
+    samples = dataset.samples
+    if not samples:
+        return CaptureGeometry(np.zeros(3), np.array([0.0, 0.0, 1.0]), 1.0, 0.0, False)
+
+    origins = np.array([_camera_center(s.viewmat) for s in samples])
+    dirs = np.array([s.viewmat[2, :3] for s in samples])          # camera +z, in world
+    dirs = dirs / (np.linalg.norm(dirs, axis=1, keepdims=True) + 1e-9)
+
+    # Least squares over the projectors onto each axis's perpendicular plane.
+    A = np.zeros((3, 3))
+    b = np.zeros(3)
+    for o, d in zip(origins, dirs):
+        proj = np.eye(3) - np.outer(d, d)
+        A += proj
+        b += proj @ o
+    # lstsq rather than solve: parallel axes make A exactly singular, and *nearly*
+    # parallel ones make it ill-conditioned, which solve answers with a huge finite
+    # centre instead of raising. The rank cut-off turns both into the sane fallback.
+    center, _, rank, _ = np.linalg.lstsq(A, b, rcond=1e-8)
+    if rank < 3 or not np.all(np.isfinite(center)):
+        center = origins.mean(axis=0)
+
+    ups = [-s.viewmat[1, :3] for s in samples]
+    up = np.mean(ups, axis=0)
+    up = up / (np.linalg.norm(up) + 1e-9)
+
+    inwardness = 1.0 - float(np.linalg.norm(dirs.mean(axis=0)))
+    dist = float(np.median(np.linalg.norm(origins - center, axis=1)))
+    return CaptureGeometry(center=center, up=up, cam_distance=max(dist, 1e-6),
+                           inwardness=inwardness,
+                           is_orbit=inwardness >= orbit_threshold)
+
+
+@dataclass
 class ObjectFrame:
     center: np.ndarray   # object bbox center (normalized frame)
     size: np.ndarray     # object bbox size

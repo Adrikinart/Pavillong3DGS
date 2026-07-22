@@ -313,7 +313,9 @@ made cross-clip alignment easy); the helmet reconstructs cleanly — sharp gold 
 
 <p align="center">
   <img src="docs/assets/casque/orbit.gif" width="620" alt="Orbit render of the reconstructed helmet"><br>
-  <em>360° turntable of the reconstructed helmet (1.5 M Gaussians).</em>
+  <em>360° turntable of the reconstructed helmet (1.5 M Gaussians), cropped to the
+  subject. The novel-view path and the crop box are both derived from the measured
+  rig geometry — see <a href="#novel-view-paths-are-chosen-from-measured-rig-geometry">below</a>.</em>
 </p>
 
 ### The three transfer tests — results
@@ -395,6 +397,36 @@ the scene's up axis is **not** +Z (`[0.166, −0.860, −0.483]`, confirmed to 7
 camera ring's own normal), and the box centre is best derived from the orbit geometry
 rather than guessed — every camera looks at the helmet, so the least-squares meeting
 point of the optical axes *is* the object centre.
+
+### Novel-view paths are chosen from measured rig geometry
+
+The Casque's first turntable was unusable — the subject was a few pixels wide in a black
+frame, wrapped in floater haze. Two causes, both from Pavillon assumptions baked into the
+reporting code:
+
+| | Before | Now |
+|---|---|---|
+| Camera path | always the front arc (a full 360 was avoided because a single-sided capture never saw the back) | true 360 orbit **when the rig is measured to orbit** |
+| Framing distance | fit the **whole scene** bounding box → framed the auditorium | the capture's **own median camera distance** → reproduces the photographer's framing |
+| Floater crop | `crop_box_normalized` from the point cloud → spans the room (6.1 units on one axis vs ~1.2) | box centred on the measured subject, sized by camera distance |
+
+The discriminator is **inwardness** = `1 − |mean(view direction)|`. Cameras ringing a
+subject look inward from all sides and their direction vectors cancel; cameras sweeping
+one face of a wall all point the same way. Measured: **0.61 / 0.75** for the two orbit
+captures, **0.15 / 0.14** for the two single-sided ones — a wide gap, so the threshold
+isn't delicately placed. Note that *azimuth coverage* fails as a discriminator: both types
+score above 300°, because on a single-sided sweep the optical axes converge at a point
+inside the camera swarm.
+
+This keys off geometry rather than the declared `capture_mode`, which defaults to `orbit`
+and was left at that for the single-sided Pavillon — so the config could not be trusted.
+The Pavillon path is unchanged (it measures as single-sided and still gets the front arc).
+
+<p align="center">
+  <img src="docs/assets/casque/orbit_framing_fix.png" width="900" alt="Orbit framing before and after"><br>
+  <em>Same model, same frame index. Left: framed on the scene bbox with the room-scale
+  crop. Right: rig-derived path, distance and crop.</em>
+</p>
 
 **3. Pose refinement — our explanation was wrong.** We had attributed its 1 dB Pavillon
 cost to poses already being sub-pixel (0.92 px). The Casque's mixed pro+iPhone set

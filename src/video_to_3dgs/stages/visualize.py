@@ -92,7 +92,8 @@ class VisualizeStage(Stage):
                         renderer, vdir / "orbit.mp4", n_frames=cfg.orbit_frames,
                         elevation_deg=cfg.orbit_elevation_deg, arc_deg=cfg.orbit_arc_deg,
                         fps=cfg.video_fps, width=cfg.orbit_width, height=cfg.orbit_height,
-                        framing_margin=cfg.framing_margin)
+                        framing_margin=cfg.framing_margin,
+                        orbit_radius_scale=cfg.orbit_radius_scale)
                 elif name == "progression":
                     # overview progression frames the whole object (pulled back);
                     # falls back to the val-render close-up progression if no GPU.
@@ -154,8 +155,11 @@ class VisualizeStage(Stage):
                 near = max(1e-3, float(d.get("near", 0.01)) * 0.5)
                 if ctx.config.report.crop_to_object:
                     crop = d.get("crop_box_normalized")
-            return CheckpointRenderer(ctx.layout, tr, ctx.config.train.sh_degree,
-                                      device="cuda", near=near, crop_box=crop)
+            return CheckpointRenderer(
+                ctx.layout, tr, ctx.config.train.sh_degree, device="cuda", near=near,
+                crop_box=crop,
+                object_crop_scale=(ctx.config.report.object_crop_scale
+                                   if ctx.config.report.crop_to_object else None))
         except Exception as e:  # noqa: BLE001
             ctx.logger.warning("could not build renderer for orbit: %s", e)
             return None

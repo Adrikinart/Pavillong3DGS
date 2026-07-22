@@ -111,6 +111,32 @@ single 4K clip; the multi-clip config is the one that needs appearance embedding
      <code>python scripts/dist_collapse_figure.py</code>.</em>
    </p>
 
+## The turntable video
+
+The fly-around path, its distance and the floater crop are all derived from the measured
+rig geometry, so no per-object tuning is needed — an orbit capture automatically gets a
+true 360 at the photographer's own framing distance, cropped to the subject. To
+(re)generate it for a specific training run:
+
+```bash
+sbatch --partition=rtxpro --nodelist=GPURACK2 --gres=gpu:1 --cpus-per-task=8 \
+  --wrap "source scripts/_activate_env.sh && \
+  python -m video_to_3dgs.cli visualize --config configs/pipeline/casque/casque.yaml \
+    --force --train-run-id casque_gsplat --set report.orbit_radius_scale=1.7"
+```
+
+Use `--train-run-id`, not `--set train.train_run_id=...`: the stage reloads the frozen
+config, so a `--set` on the run id is discarded and you will silently render whichever run
+last wrote that config. Knobs: `report.orbit_radius_scale` (pull back if the subject
+clips) and `report.object_crop_scale` (raise if the crop eats scenery you want, lower if
+haze survives).
+
+Then refresh the README assets:
+```bash
+python scripts/make_demo_assets.py casque_orbit_07ccd886 --train-run casque_gsplat \
+       --gif-width 520 --gif-fps 10
+```
+
 ## What to watch for
 
 - **Appearance drift** (logged): if the pro/iPhone response differs a lot, the affine

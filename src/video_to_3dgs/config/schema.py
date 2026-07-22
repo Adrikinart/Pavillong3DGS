@@ -274,15 +274,23 @@ class ReportCfg(_Base):
         default_factory=lambda: ["orbit", "progression"])
     orbit_frames: int = 120
     orbit_elevation_deg: float = 12.0
-    orbit_arc_deg: float = 80.0          # front-facing sweep (not full 360 for single-side)
-    orbit_radius_scale: float = 1.2      # (legacy; framing_margin now controls distance)
-    framing_margin: float = 1.25         # pull-back so the whole object fits in view
+    orbit_arc_deg: float = 80.0          # front-facing sweep (single-sided captures only)
+    # For captures measured to be true orbits the fly-around radius is the capture's own
+    # median camera distance times this scale, so novel views reproduce the framing the
+    # photographer chose. Only used on the single-sided path via framing_margin below.
+    orbit_radius_scale: float = 1.2
+    framing_margin: float = 1.25         # single-sided: pull-back so the object fits
     orbit_width: int = 960
     orbit_height: int = 540
     video_fps: int = 30
     progression_fps: int = 4             # overview progression is a few checkpoints
     progression_hold: int = 6            # frames to hold each checkpoint
     crop_to_object: bool = True          # render only Gaussians in the object box (kill floaters)
+    # Half-size of that box for measured-orbit captures, as a fraction of the capture's
+    # median camera distance. The stored point-cloud box spans the whole room for an
+    # object filmed indoors, so it removes nothing; this one is centred on the subject.
+    # Raise it if the fly-around clips scenery you want, lower it if haze survives.
+    object_crop_scale: float = 0.5
 
 
 # --------------------------------------------------------------------------- #
