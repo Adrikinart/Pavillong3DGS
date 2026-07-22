@@ -3,12 +3,12 @@
 # existing GPU allocation) or by submitting Slurm jobs.
 #
 # Usage:
-#   scripts/run_pipeline.sh local    configs/pipeline/scene_pavillon.yaml
-#   scripts/run_pipeline.sh slurm    configs/pipeline/scene_pavillon.yaml
+#   scripts/run_pipeline.sh local    configs/pipeline/pavillon/scene_pavillon.yaml
+#   scripts/run_pipeline.sh slurm    configs/pipeline/pavillon/scene_pavillon.yaml
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 MODE="${1:-local}"
-CONFIG="${2:-configs/pipeline/scene_pavillon.yaml}"
+CONFIG="${2:-configs/pipeline/pavillon/scene_pavillon.yaml}"
 ENV_PREFIX="${V2GS_ENV_PREFIX:-/home/$USER/envs/v2gs}"
 PY="${ENV_PREFIX}/bin/python"
 

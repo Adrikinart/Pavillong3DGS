@@ -15,14 +15,14 @@
 # COLMAP/masks are computed once by preprocess.sbatch beforehand.
 #
 # Usage:
-#   sbatch scripts/slurm/preprocess.sbatch configs/pipeline/scene_pavillon.yaml   # once
-#   sbatch scripts/slurm/sweep.sbatch      configs/pipeline/scene_pavillon.yaml
+#   sbatch scripts/slurm/preprocess.sbatch configs/pipeline/pavillon/scene_pavillon.yaml   # once
+#   sbatch scripts/slurm/sweep.sbatch      configs/pipeline/pavillon/scene_pavillon.yaml
 # Edit VARIANTS below to define the sweep axis.
 # ---------------------------------------------------------------------------
 set -uo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p experiments/slurm_logs
-CONFIG="${1:-${V2GS_CONFIG:-configs/pipeline/scene_pavillon.yaml}}"
+CONFIG="${1:-${V2GS_CONFIG:-configs/pipeline/pavillon/scene_pavillon.yaml}}"
 ENV_PREFIX="${V2GS_ENV_PREFIX:-/home/$USER/envs/v2gs}"
 source scripts/_activate_env.sh
 

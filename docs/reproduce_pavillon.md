@@ -158,10 +158,10 @@ normalize → split → train → evaluate → export → visualize):
 # A3 regularized model (the deliverable)
 sbatch --partition=rtxpro --nodelist=GPURACK2 --gres=gpu:1 --cpus-per-task=8 \
        --export=ALL,MAX_JOBS=4,OMP_NUM_THREADS=4 \
-       scripts/slurm/train.sbatch configs/pipeline/pavillon_orbit_reg.yaml
+       scripts/slurm/train.sbatch configs/pipeline/pavillon/pavillon_orbit_reg.yaml
 
 # plain baseline, for comparison
-sbatch scripts/slurm/train.sbatch configs/pipeline/pavillon_orbit_hq.yaml
+sbatch scripts/slurm/train.sbatch configs/pipeline/pavillon/pavillon_orbit_hq.yaml
 ```
 
 **Adding a second training to an existing dataset dir.** The resolved config is
@@ -169,7 +169,7 @@ frozen per dataset directory and is authoritative, so an edited config is ignore
 unless you re-freeze it. To train a *sibling* run reusing the same COLMAP:
 
 ```bash
-sbatch ... scripts/slurm/train.sbatch configs/pipeline/pavillon_orbit_reg.yaml \
+sbatch ... scripts/slurm/train.sbatch configs/pipeline/pavillon/pavillon_orbit_reg.yaml \
        --force --from-stage train
 ```
 

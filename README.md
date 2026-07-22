@@ -235,7 +235,7 @@ a mean-only "winner" would overclaim.
 
 ## Settings of the recommended model
 
-One YAML file, no code changes (`configs/pipeline/pavillon_orbit_hidetail_cap375k.yaml`):
+One YAML file, no code changes (`configs/pipeline/pavillon/pavillon_orbit_hidetail_cap375k.yaml`):
 
 | Stage | Setting | Value |
 |---|---|---|
@@ -266,10 +266,10 @@ srun --partition=rtxpro --nodelist=GPURACK2 --gres=gpu:1 --time=00:25:00 \
 
 # 2. full reconstruction: extract → filter → GLOMAP → normalize → split
 #    → train → evaluate → export → visualize
-sbatch scripts/slurm/train.sbatch configs/pipeline/pavillon_orbit_hidetail.yaml
+sbatch scripts/slurm/train.sbatch configs/pipeline/pavillon/pavillon_orbit_hidetail.yaml
 
 # 3. train a sibling model on the SAME reconstruction (skips the expensive SfM)
-sbatch scripts/slurm/train.sbatch configs/pipeline/pavillon_orbit_reg.yaml \
+sbatch scripts/slurm/train.sbatch configs/pipeline/pavillon/pavillon_orbit_reg.yaml \
        --force --from-stage train
 ```
 
@@ -326,6 +326,8 @@ checkpoint; SIGTERM flushes a checkpoint and exits 0 for Slurm requeue.
 ## Documentation
 
 - **[docs/reproduce_pavillon.md](docs/reproduce_pavillon.md)** — reproduce the model end-to-end (start here)
+- **[docs/reproduce_casque.md](docs/reproduce_casque.md)** — the Casque helmet (object-centric orbit, multi-camera — inverts the Pavillon lessons)
+- [configs/pipeline/README.md](configs/pipeline/README.md) — config layout + one-config-per-object / `--set`-for-sweeps convention
 - **[docs/report/theory.tex](docs/report/theory.tex)** — cited theory: representation, EWA projection, compositing, density control, depth priors, appearance modelling
 - [docs/pipeline_architecture.md](docs/pipeline_architecture.md) · [docs/colmap_guide.md](docs/colmap_guide.md) · [docs/capture_guide.md](docs/capture_guide.md) · [docs/troubleshooting.md](docs/troubleshooting.md)
 - [state/decisions.md](state/decisions.md) — every technical decision with its evidence, **including retractions**

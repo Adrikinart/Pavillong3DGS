@@ -11,13 +11,13 @@
 # Preprocess: inspect -> extract -> filter -> masks -> COLMAP -> validate ->
 # normalize -> split. Runs on a GPU node so masking + node-local scratch (COLMAP
 # SQLite) are available. COLMAP feature extraction defaults to CPU SIFT.
-# Usage:  sbatch scripts/slurm/preprocess.sbatch configs/pipeline/scene_pavillon.yaml
+# Usage:  sbatch scripts/slurm/preprocess.sbatch configs/pipeline/pavillon/scene_pavillon.yaml
 # ---------------------------------------------------------------------------
 set -uo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p experiments/slurm_logs
 
-CONFIG="${1:-${V2GS_CONFIG:-configs/pipeline/scene_pavillon.yaml}}"
+CONFIG="${1:-${V2GS_CONFIG:-configs/pipeline/pavillon/scene_pavillon.yaml}}"
 ENV_PREFIX="${V2GS_ENV_PREFIX:-/home/$USER/envs/v2gs}"
 source scripts/_activate_env.sh
 

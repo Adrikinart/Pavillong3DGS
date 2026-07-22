@@ -32,7 +32,7 @@ export → report, with checkpoint/resume verified.
 - [x] Env `v2gs` on /home: torch 2.13.0+cu130 (sm_120), gsplat 1.5.3 built on sm_120,
       colmap 3.13. Bootstrap installs the pip layer via srun on a GPU node.
 - [x] Blackwell validation on GPURACK5: CUDA fwd/bwd pass, gsplat rasterize pass.
-- [x] **End-to-end smoke PASSES** (configs/pipeline/smoke_test.yaml, IMG_9647):
+- [x] **End-to-end smoke PASSES** (configs/pipeline/templates/smoke_test.yaml, IMG_9647):
       COLMAP 46/126 @ 0.48px -> train (val PSNR 19.6) -> eval (test PSNR 17.73,
       SSIM 0.61, LPIPS 0.76, 1.02 render FPS) -> ply export -> report.
       Marker: experiments/SMOKE_TEST_OK.

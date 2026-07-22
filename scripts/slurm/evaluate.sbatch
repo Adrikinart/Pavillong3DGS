@@ -14,7 +14,7 @@
 set -uo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p experiments/slurm_logs
-CONFIG="${1:-${V2GS_CONFIG:-configs/pipeline/scene_pavillon.yaml}}"
+CONFIG="${1:-${V2GS_CONFIG:-configs/pipeline/pavillon/scene_pavillon.yaml}}"
 TR_ID="${2:-}"
 ENV_PREFIX="${V2GS_ENV_PREFIX:-/home/$USER/envs/v2gs}"
 source scripts/_activate_env.sh

@@ -1,0 +1,117 @@
+# Casque Saint-Georges — object-centric orbit reconstruction.
+#
+# This capture is the OPPOSITE of the Pavillon on almost every axis, so several
+# hard-won Pavillon settings are deliberately inverted here:
+#
+#   Pavillon (scene)                     Casque (object)
+#   -----------------------------------  -----------------------------------------
+#   single-sided, low parallax           full ORBIT, high parallax  -> more capacity OK
+#   relief carved INTO a wall            free-standing helmet       -> MASKS isolate it
+#   one iPhone clip                      pro camera + iPhone        -> appearance embeds
+#   2DGS failed (no multi-view normals)  multi-view surface         -> 2DGS should WORK
+#   cap_max 375k optimal (overfitting)   good coverage              -> start ~1.5M, tune UP
+#
+# The one thing kept from the Pavillon: normal-consistency (cleaner mesh) and the
+# anti-floater prune. Because the helmet is masked, the room-bounds AABB is replaced
+# by the mask isolating the object; an attractive object box (masked) is a sensible
+# future addition here, unlike on the wall-embedded Pavillon.
+object_name: casque_orbit
+capture_mode: orbit
+profile:
+  name: rtxpro
+  nodelist: GPURACK2
+# Pro camera (102A25xx) + iPhone (IMG_8xxx) orbits. Curate to the clean full orbits;
+# short/hand-held establishing clips can hurt. Verify each with `inspect-video`.
+videos:
+  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/102A2544.MOV"
+  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/102A2545.MOV"
+  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/IMG_8280.MOV"
+  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/IMG_8281.MOV"
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 3.0
+  max_frames: 400            # across all clips; orbit coverage is the point
+  min_frames: 80
+  resize_long_edge: 2560     # Pavillon lesson: keep native detail (pro camera is 4K+)
+
+filter_frames:
+  enabled: true
+  blur_var_min: 50.0         # now measured at a fixed reference scale (resolution-safe)
+
+# The helmet is the subject, not the room -> isolate it. This makes COLMAP key off
+# the object (not the changing background between clips) and confines Gaussians to it.
+generate_masks:
+  enabled: true
+  backend: rembg             # salient-object; switch to sam2 if the helmet is not salient
+  dilate_px: 6
+  minimum_area_fraction: 0.05
+  manual_review: true        # verify a few masks before committing a long run
+
+run_colmap:
+  matcher: exhaustive        # orbit + multi-source: no single temporal ordering
+  mapper_backend: glomap     # robust global SfM (2.2x registration on the Pavillon)
+  camera_model: OPENCV
+  single_camera: false       # pro camera and iPhone have DIFFERENT intrinsics
+  use_masks: true            # mask-only features: ignore the environment
+  sequential_overlap: 15
+
+validate_colmap:
+  minimum_registration_ratio: 0.60
+  hard_fail: false
+
+normalize_scene:
+  method: cameras            # object-centric: camera ring defines the frame
+
+split_dataset:
+  strategy: pose_aware
+
+train:
+  backend: gsplat
+  train_run_id: casque_gsplat
+  max_iterations: 30000
+  sh_degree: 3
+  use_masks: true            # supervise only the helmet
+  antialiasing: true
+  checkpoint_interval: 5000
+  validation_interval: 1000
+  # Two cameras with different colour response -> reconcile with per-image latents.
+  # This is the mechanism validated on the Pavillon multi-clip merge.
+  appearance_embedding: true
+  appearance_model: affine   # try bilateral only if vignetting/spatial response appears
+  densification:
+    strategy: mcmc           # explicit budget target; no grad_threshold to tune
+    start_iteration: 500
+    stop_iteration: 15000
+    interval: 100
+    prune_opacity: 0.005
+    cap_max: 1500000         # good coverage -> more capacity than the Pavillon's 375k;
+    noise_lr: 5.0e5          #   run a short capacity probe (see docs/reproduce_casque.md)
+  bounds:
+    enabled: true
+    margin: 0.5
+  floater:
+    enabled: true
+    max_scale_frac: 0.15
+    min_opacity: 0.005
+  # Good multi-view coverage makes the depth prior less critical, but it is cheap.
+  depth_prior:
+    enabled: true
+    model: depth-anything/Depth-Anything-V2-Small-hf
+    lambda_depth: 0.1
+    start_iter: 2000
+    loss: pearson
+  # Cleaner surface for the mesh export (helped the Pavillon mesh: coherence 0.81->0.92)
+  normal_consistency:
+    enabled: true
+    lambda_normal: 0.05
+    start_iter: 7000
+
+report:
+  enabled: true
+  figures: [training_curves, qualitative, gaussian_stats, per_view, gaussian_centers]
+  videos: [orbit, progression]
+  orbit_frames: 180
+  orbit_arc_deg: 360.0       # a real orbit -> full turntable video, not a front arc
+  orbit_elevation_deg: 15.0
+  video_fps: 30

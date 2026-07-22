@@ -28,7 +28,7 @@ def _make_video(path: Path) -> None:
 
 
 def _ctx(tmp_path, videos):
-    cfg = load_config("configs/pipeline/smoke_test.yaml", overrides=[
+    cfg = load_config("configs/pipeline/templates/smoke_test.yaml", overrides=[
         "extract_frames.target_fps=5", "extract_frames.max_frames=8",
         "extract_frames.min_frames=3", "filter_frames.min_kept=3",
         "filter_frames.blur_var_min=1.0",

@@ -19,8 +19,8 @@ is hostile to NFS) and validates the result:
 ```bash
 # on a GPU node (or inside an srun/sbatch allocation)
 source scripts/_activate_env.sh          # puts the env's colmap on PATH, sets CUDA_HOME
-python -m video_to_3dgs.cli reconstruct              --config configs/pipeline/scene_pavillon.yaml
-python -m video_to_3dgs.cli validate-reconstruction  --config configs/pipeline/scene_pavillon.yaml
+python -m video_to_3dgs.cli reconstruct              --config configs/pipeline/pavillon/scene_pavillon.yaml
+python -m video_to_3dgs.cli validate-reconstruction  --config configs/pipeline/pavillon/scene_pavillon.yaml
 ```
 
 Relevant config knobs (`run_colmap:` in the pipeline YAML):

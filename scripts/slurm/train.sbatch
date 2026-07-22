@@ -11,14 +11,14 @@
 #SBATCH --error=experiments/slurm_logs/%x_%j.err
 # ---------------------------------------------------------------------------
 # Train (+ evaluate + export + report) a 3DGS reconstruction.
-# Usage:  sbatch scripts/slurm/train.sbatch configs/pipeline/scene_pavillon.yaml
+# Usage:  sbatch scripts/slurm/train.sbatch configs/pipeline/pavillon/scene_pavillon.yaml
 # Override node/partition:  sbatch --partition=rtx50 --nodelist=GPURACK4 ... <config>
 # ---------------------------------------------------------------------------
 set -uo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p experiments/slurm_logs
 
-CONFIG="${1:-${V2GS_CONFIG:-configs/pipeline/scene_pavillon.yaml}}"
+CONFIG="${1:-${V2GS_CONFIG:-configs/pipeline/pavillon/scene_pavillon.yaml}}"
 ENV_PREFIX="${V2GS_ENV_PREFIX:-/home/$USER/envs/v2gs}"
 
 # Prepare env (PATH + CUDA_HOME/CPATH so gsplat's CUDA ext can JIT-build, plus

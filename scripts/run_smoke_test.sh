@@ -13,7 +13,7 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 PART="${1:-rtxpro}"
 NODE="${2:-GPURACK5}"
-CONFIG="configs/pipeline/smoke_test.yaml"
+CONFIG="configs/pipeline/templates/smoke_test.yaml"
 ENV_PREFIX="${V2GS_ENV_PREFIX:-/home/$USER/envs/v2gs}"
 PY="${ENV_PREFIX}/bin/python"
 MARKER="experiments/SMOKE_TEST_OK"
