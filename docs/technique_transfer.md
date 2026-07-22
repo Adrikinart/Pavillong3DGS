@@ -14,11 +14,11 @@ does not help · ⏭️ deliberately skipped.
 | Scene-scale + LR-decay fixes | PSNR 14 → 24 | Framework-wide | ✅ automatic |
 | **Resolution** (no downscale) | +1.8 dB, tail → 0 | Limited — only 1 of 4 clips is 4K | ➖ 2560 px, capped by 1080p clips |
 | **Anti-floater** (bounds + prune) | 18.2 % → 0 % haze | Yes | ✅ applied |
-| **Depth prior** (Pearson) | nearly free (0.26 dB) | Lower — an orbit already has parallax | ➖ on, low impact |
+| **Depth prior** (DepthAnything-v2) | nearly free (0.26 dB) | Expected lower — an orbit already has parallax | 🔬 **on in every run, ablation running** |
 | **Capacity** sweep | 375 k optimal (*less is more*) | **INVERTS** — an orbit is not sparse-view | ✅ **1.5 M** optimal (4× the Pavillon) |
 | **MCMC** densification | parity, cleaner control | Yes | ✅ applied |
 | **Normal-consistency** | mesh coherence 0.81 → 0.92 | Yes (helmet mesh) | ✅ applied |
-| **Appearance embeddings** | unlocks multi-clip | High — pro camera + iPhone | ✅ applied (multi-clip) |
+| **Appearance embeddings** | unlocks multi-clip (+3 dB) | Multi-clip only | ✅ multi-clip · ❌ single-clip tie (−0.09 dB, CI [−0.60, +0.41]) |
 | Bilateral-grid appearance | tie (no spatial variation) | Possible (pro/iPhone vignetting) | ⏭️ low priority |
 | **Pose optimization** | −1 dB (poses already 0.9 px) | Hypothesis falsified — hurts again | ❌ −0.54 dB, CI [−0.71, −0.36] |
 | **2DGS** surface backend | FAILED, 13 dB (single-sided) | **Works** — a real orbit supplies the normals | ✅ parity w/ 3DGS, `dist_lambda=0` |
@@ -82,6 +82,29 @@ safe to assume and are being measured rather than copied:
    views. Pose refinement is now a negative on *both* captures, and the "poses were
    already too good" explanation does not survive — a better hypothesis is that our
    SE(3) refinement trades multi-view consistency for per-view photometric fit.
+
+## Appearance embeddings are a *merge* tool, not a general one
+
+Enabling per-image appearance latents on the **single** 4K clip was a tie: **−0.09 dB,
+95 % CI [−0.60, +0.41]**, 6/13 views. The interval is tight enough to read as a real null
+rather than an underpowered test. The mechanism explains it — the latents exist to
+reconcile *different* exposure/colour responses, and one continuous iPhone clip does not
+drift enough to matter. They earned their +3 dB on the Pavillon only when merging clips.
+
+So the rule is not "object captures want appearance embeddings"; it is **"turn them on
+when you merge sources, and not otherwise."**
+
+## A claim that was assumed rather than measured
+
+The depth-prior row above was originally marked "low impact here" by *reasoning*: it moved
+the Pavillon only 0.26 dB, and an orbit supplies real parallax, so a monocular depth prior
+should matter even less. That is the same style of argument that produced the capacity and
+pose-refinement predictions — one of which inverted and one of which was falsified. It is
+not evidence, and it should not have been recorded in the same table as measurements.
+
+DepthAnything-v2-Small (Pearson loss, λ = 0.1, from iteration 2000) is in fact enabled in
+**every** Casque run reported here, so it is part of the recommended configuration whether
+or not it earns its place. The ablation is running; the row stays 🔬 until it lands.
 
 ## Findings that transferred as-is
 
