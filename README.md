@@ -1,7 +1,9 @@
-# video_to_3dgs — Pavillon
+# video_to_3dgs
 
 Raw handheld video → a trained, evaluated, exportable **3D Gaussian Splatting**
-reconstruction, orchestrated end-to-end on a Slurm GPU cluster.
+reconstruction, orchestrated end-to-end on a Slurm GPU cluster. Built and validated on
+two deliberately opposite captures, so the framework and its findings are tested for
+*transfer*, not tuned to one scene.
 
 <p align="center">
   <img src="docs/assets/pavillon/orbit.gif" width="620" alt="Orbit render of the reconstructed carved panel"><br>
@@ -9,9 +11,24 @@ reconstruction, orchestrated end-to-end on a Slurm GPU cluster.
   (recommended 2560 px model, 359 k Gaussians)</em>
 </p>
 
+## The two captures
+
+| | **Pavillon** | **Casque Saint-Georges** |
+|---|---|---|
+| Subject | carved relief **in a wall** | free-standing **reflective helmet** |
+| Camera path | **single-sided**, low parallax | **full orbit**, high parallax |
+| Sources | one iPhone clip | pro camera **+** iPhone |
+| Reconstruction | 24.9 PSNR / 0.862 SSIM, 0 % catastrophic | helmet sharp; scene 22.1 PSNR (533 views) |
+| Recipe | [docs/reproduce_pavillon.md](docs/reproduce_pavillon.md) | [docs/reproduce_casque.md](docs/reproduce_casque.md) |
+
+They sit at opposite ends of almost every axis, which is the point: several techniques
+that help one **invert** on the other. **[docs/technique_transfer.md](docs/technique_transfer.md)**
+tracks every technique and whether it transferred — the most useful single page if you
+are adapting this to a new capture.
+
 ---
 
-## Executive summary
+## Case study 1 — Pavillon (executive summary)
 
 **The subject.** A carved wooden ceiling panel, stood vertical and filmed handheld
 in a room. This capture is close to a worst case for 3DGS: **single-sided** (the
@@ -263,6 +280,42 @@ One YAML file, no code changes (`configs/pipeline/pavillon/pavillon_orbit_hideta
 Outputs: `point_cloud.ply` (89 MB) · `mesh.ply` (952 k verts) · orbit + progression
 videos · 5 figures · `eval.json` · a row in `experiments/registry.csv`.
 
+---
+
+## Case study 2 — Casque (a different capture)
+
+A full **orbit** of a free-standing **chrome dragoon helmet** (plume, on a stand, on a
+checkerboard, in an auditorium), shot with a **pro camera and an iPhone**. The point of
+this second object is *transfer*: does the framework, and do the Pavillon findings,
+carry to the opposite geometry? See
+**[docs/technique_transfer.md](docs/technique_transfer.md)** for the full matrix and
+**[docs/reproduce_casque.md](docs/reproduce_casque.md)** for the recipe.
+
+**What the framework did well, unchanged:** GLOMAP registered **533/536** images across
+4 clips and two camera types at 1.57 px (the checkerboard, which we kept *unmasked*,
+made cross-clip alignment easy); the helmet reconstructs cleanly — sharp gold crest,
+*plausible chrome* (SH degree 3 on a genuinely hard reflective surface), soft plume.
+
+**Three framework-aware decisions that inverted the Pavillon defaults:**
+
+1. **Masks off, not on.** The obvious "I only want the helmet → mask it" backfires:
+   rembg swung 0.1–45 % across the orbit (chrome + wispy plume + stand), and masking
+   would have deleted the checkerboard — the best SfM features present. So: reconstruct
+   the full scene, isolate the free-standing helmet **in 3D** afterwards (crop).
+2. **The object box is a negative.** Concentrating the budget on the helmet with an
+   explicit box (`train.bounds.box_center`) did **not** sharpen it — same PSNR, plus
+   radial boundary smearing. The helmet is **data-limited, not budget-limited** — the
+   mirror of the Pavillon capacity finding. Isolate by cropping, not by pruning.
+3. **Aggregate metrics mislead more than usual.** Multi-clip *raised* PSNR (20.4 → 22.1)
+   but the montage shows why: the added clips are **wide** shots where the *room*
+   dominates the frame, so the gain is environment, not helmet. The helmet detail comes
+   from the one close-up 4K clip.
+
+Under test as of writing (the genuinely relevant untested transfers): **2DGS** (a real
+orbit should give it the multi-view normals the Pavillon lacked), a **capacity sweep**
+(does "less is more" invert when there is real parallax?), and **pose refinement**
+(mixed-camera poses are 1.57 px, vs the Pavillon's already-perfect 0.9 px).
+
 ## Quickstart
 
 ```bash
@@ -339,6 +392,7 @@ checkpoint; SIGTERM flushes a checkpoint and exits 0 for Slurm requeue.
 
 - **[docs/reproduce_pavillon.md](docs/reproduce_pavillon.md)** — reproduce the model end-to-end (start here)
 - **[docs/reproduce_casque.md](docs/reproduce_casque.md)** — the Casque helmet (object-centric orbit, multi-camera — inverts the Pavillon lessons)
+- **[docs/technique_transfer.md](docs/technique_transfer.md)** — every technique, Pavillon → Casque, and whether it transferred
 - [configs/pipeline/README.md](configs/pipeline/README.md) — config layout + one-config-per-object / `--set`-for-sweeps convention
 - **[docs/report/theory.tex](docs/report/theory.tex)** — cited theory: representation, EWA projection, compositing, density control, depth priors, appearance modelling
 - [docs/pipeline_architecture.md](docs/pipeline_architecture.md) · [docs/colmap_guide.md](docs/colmap_guide.md) · [docs/capture_guide.md](docs/capture_guide.md) · [docs/troubleshooting.md](docs/troubleshooting.md)
