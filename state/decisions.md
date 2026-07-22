@@ -178,6 +178,52 @@ views while enlarging the reconstructed volume (point extent [2.53, 9.61, 8.7]),
 
 Conclusion: keep `gsplat_hidetail_30k` as the deliverable.
 
+### Generative diffusion priors do NOT help this capture (measured, decisive)
+The single-sided panel cannot be re-shot in orbit (physical constraint: it is against
+a wall), so the natural remaining lever was a generative prior for under-constrained
+views. Best-adapted candidate: FixingGS (training-free score distillation) -- it targets
+exactly under-constrained views and needs no custom-trained model, unlike GSFixer's
+video-DiT. Before building the training-time distillation (large + finicky + risks
+oversmoothing the relief), a fail-fast gate: refine the trained model's held-out RENDERS
+with off-the-shelf SD-Turbo (img2img) and measure vs ground truth.
+
+| refinement strength | PSNR | SSIM | LPIPS |
+|---|---:|---:|---:|
+| raw render (none) | **24.92** | **0.8611** | **0.3088** |
+| 0.1 | 24.26 | 0.8398 | 0.3351 |
+| 0.2 | 23.54 | 0.8177 | 0.3609 |
+| 0.3 | 22.54 | 0.7855 | 0.3984 |
+
+Monotonically WORSE on all three metrics, including LPIPS, at every strength. The prior
+moves renders away from GT, not toward it -- it hallucinates a generic "sharp carved
+panel" that does not match this specific panel. This kills the training-time build: if
+post-hoc refinement of already-good renders hallucinates, distilling that prior into the
+model only bakes it in. scripts/diffusion_refine_test.py reproduces it.
+
+**Why this differs from FixingGS's reported +3.55 dB:** those methods operate in the
+extreme-sparse regime (~3 views) where the reconstruction is genuinely broken and the
+prior fills real gaps. Ours has 226 views at 24.9 dB / SSIM 0.86 -- no gap to fill, only
+specific high-frequency detail for a generic prior to corrupt. Generative priors help
+BAD reconstructions; a good one has nothing to gain and detail to lose. Feasibility of
+running diffusion on the Blackwell/cu130 env is confirmed (SD-Turbo runs, low-strength
+refinement preserves high-freq) -- the negative is about the data regime, not tooling.
+
+### Object-region metrics don't discriminate here (Tier 3, negative)
+scripts/object_metrics.py projects the robust SfM point AABB into each view as a mask, to
+score the panel rather than the room. Finding: the mask covers ~100% of the frame,
+because the point cloud is dominated by the wall the relief sits ON -- the "object" is
+coextensive with the scene. So frame-level metrics are already appropriate for this
+capture, and the persistent +/-0.45 dB ties are a consequence of the 28-view test count,
+not background dilution. Kept for captures where the object is separable from background.
+
+### Auto-capacity heuristic (Tier 2, tentative)
+Both datasets are optimal at cap_max=375k: 152k points -> 375k (2.45x), 170k -> 375k
+(2.20x). So cap_max ~= 2.3x the sparse-point count is a reasonable STARTING point (Gaussian
+density ~2x real reconstructed structure), but with only two data points at the same
+optimum it is a heuristic to seed a short 2-point probe, not a validated law. The robust
+finding remains that capacity must be tuned per capture and less is better in the
+sparse-view regime.
+
 ### Three evidence-ranked follow-ups (one soft win, two informative nulls)
 
 **Depth-normal consistency (`train.normal_consistency`) — helps the GEOMETRY, not the

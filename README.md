@@ -36,8 +36,11 @@ The whole pipeline is reproducible from one config file.
 
 **What did not work**, reported because negative results are cheap to hide and
 expensive to rediscover: **2DGS** collapses to flat renders (PSNR ~13) on a
-single-sided capture, and **merging a second clip** still loses ~1 dB even with
-appearance embeddings.
+single-sided capture; **pose refinement** costs 1 dB (SfM was already sub-pixel); and
+**a generative diffusion prior** (FixingGS/Difix-style) moves renders *away* from
+ground truth at every strength — those methods fix the extreme-sparse regime where the
+reconstruction is broken, and ours (226 views, 24.9 dB) has no gap to fill, only detail
+to corrupt.
 
 ---
 
@@ -224,6 +227,7 @@ required changing the deliverable.
 | **Bilateral-grid appearance** | `appearance_model: bilateral` | **Tie** with the affine model (−0.15 ± 0.37 dB) — this capture has no *spatially varying* response, only a global exposure shift the affine map already fixes (grid drift 0.013 vs 0.072). |
 | **Multi-clip at 375 k** | `pavillon_multiclip_cap375k` | The merge's **best** result (22.99). Correct capacity recovered the original clip's views to parity with the added clip — most of the earlier merge deficit was budget dilution, not the merge. |
 | **Pose refinement** | `train.pose_optimization` | **−1 dB.** GLOMAP's poses were already 0.92 px; there was no error to recover. |
+| **Generative diffusion prior** | `scripts/diffusion_refine_test.py` | **Worse at every strength** (24.9 → 24.3 → 22.5 vs GT). Helps broken sparse reconstructions, not a good one — it hallucinates generic detail. |
 
 All differences within a dataset that fall inside ±~0.45 dB are reported as ties, not
 wins — with 28–33 test views the paired confidence interval is that wide, and reporting

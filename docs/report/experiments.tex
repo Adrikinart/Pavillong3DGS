@@ -137,6 +137,14 @@ report both operating points rather than collapsing them into one recommendation
         exposure drift, yet the merged model still trails the best single-clip model
         by $\approx$1\,dB. The second clip enlarges the reconstructed volume while
         adding few views.
+  \item \textbf{Generative diffusion prior:} does not help. Refining the trained
+        model's held-out renders with an off-the-shelf image diffusion model (the
+        training-free, post-hoc form of FixingGS) moves them monotonically
+        \emph{away} from ground truth on all three metrics (PSNR 24.92 $\to$ 24.26
+        $\to$ 23.54 at strengths 0.1--0.3, LPIPS worsening throughout). At 226 views and
+        24.9\,dB there is no reconstruction gap for the prior to fill, only specific
+        carved detail for a generic prior to corrupt; such methods target the
+        extreme-sparse ($\sim$3-view) regime where the base reconstruction is broken.
   \item \textbf{Pose refinement:} costs 1\,dB. The learned deltas moved only
         $0.036^\circ$ and $7\times10^{-4}$ --- about one pixel --- because GLOMAP's
         poses were already sub-pixel accurate. Refining only training cameras (test
