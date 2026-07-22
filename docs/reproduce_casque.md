@@ -10,7 +10,7 @@ therefore call for opposite settings.
 | Axis | Pavillon (scene) | Casque (object) | Consequence |
 |---|---|---|---|
 | Coverage | single-sided, low parallax | **full orbit**, high parallax | more Gaussian capacity is fine — do **not** copy 375k |
-| Subject vs scene | relief carved *into* a wall | **free-standing** helmet | use **masks** to isolate the object |
+| Subject vs scene | relief carved *into* a wall | **free-standing** helmet | isolate the helmet **in 3D** (crop), not by mask — see below |
 | Cameras | one iPhone clip | **pro camera + iPhone** | **appearance embeddings** reconcile the two responses |
 | Surface method | 2DGS failed (no multi-view normals) | multi-view surface | **2DGS should work** — try it for the mesh |
 | Interest | the whole panel | the **helmet only** | mask-supervised training, 360° orbit video |
@@ -36,9 +36,14 @@ Both enable masks, per-image appearance embeddings, GLOMAP, and `single_camera: 
    python -m video_to_3dgs.cli inspect-video --config configs/pipeline/casque/casque.yaml
    ```
 
-2. **Check the masks before a long run.** The helmet must be the salient object for
-   `rembg`; if the background competes, switch `generate_masks.backend` to `sam2`. The
-   config sets `manual_review: true` so masks are written for inspection first.
+2. **Do NOT mask this capture** (a gate test settled it). rembg's salient-object model
+   swings from 0.1% to 45% of the frame across the orbit — chrome reflections, a wispy
+   horsehair plume and a competing stand defeat it. More importantly, the scene has a
+   **checkerboard calibration target** (the best SfM features present) while the chrome
+   helmet has almost none, so mask-only COLMAP would throw away the features that give
+   good poses. Reconstruct the full scene and isolate the *free-standing* helmet
+   spatially afterwards. (`rembg` needs `onnxruntime`; masking is the right tool only
+   when the object is genuinely salient — a matte object on a plain background.)
 
 3. **Run it** (env + node pre-flight identical to the Pavillon —
    see [reproduce_pavillon.md](reproduce_pavillon.md) §0–1):

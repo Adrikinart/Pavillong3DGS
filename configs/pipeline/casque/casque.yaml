@@ -6,15 +6,15 @@
 #   Pavillon (scene)                     Casque (object)
 #   -----------------------------------  -----------------------------------------
 #   single-sided, low parallax           full ORBIT, high parallax  -> more capacity OK
-#   relief carved INTO a wall            free-standing helmet       -> MASKS isolate it
+#   relief carved INTO a wall            free-standing helmet       -> isolate in 3D (crop)
 #   one iPhone clip                      pro camera + iPhone        -> appearance embeds
 #   2DGS failed (no multi-view normals)  multi-view surface         -> 2DGS should WORK
 #   cap_max 375k optimal (overfitting)   good coverage              -> start ~1.5M, tune UP
 #
-# The one thing kept from the Pavillon: normal-consistency (cleaner mesh) and the
-# anti-floater prune. Because the helmet is masked, the room-bounds AABB is replaced
-# by the mask isolating the object; an attractive object box (masked) is a sensible
-# future addition here, unlike on the wall-embedded Pavillon.
+# Kept from the Pavillon: normal-consistency (cleaner mesh) and the anti-floater prune.
+# The helmet is isolated SPATIALLY (crop box / tight train.bounds) rather than by a
+# mask -- see the generate_masks note below for why. An attractive object box is a
+# sensible refinement here, since the helmet is separable in 3D.
 object_name: casque_orbit
 capture_mode: orbit
 profile:
@@ -22,10 +22,10 @@ profile:
   nodelist: GPURACK2
 # Pro camera (102A25xx) + iPhone (IMG_8xxx) orbits. Curate to the clean full orbits;
 # short/hand-held establishing clips can hurt. Verify each with `inspect-video`.
+# Footage survey: the "pro" clips (102A25xx) are only 1080p; IMG_8281 is the single
+# 4K clip (3840x2160, 154s orbit) and the detail winner. Start from it ALONE for a
+# clean baseline (the Pavillon lesson), then add clips + appearance for coverage.
 videos:
-  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/102A2544.MOV"
-  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/102A2545.MOV"
-  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/IMG_8280.MOV"
   - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/IMG_8281.MOV"
 
 extract_frames:
@@ -39,21 +39,25 @@ filter_frames:
   enabled: true
   blur_var_min: 50.0         # now measured at a fixed reference scale (resolution-safe)
 
-# The helmet is the subject, not the room -> isolate it. This makes COLMAP key off
-# the object (not the changing background between clips) and confines Gaussians to it.
+# Masking is OFF, deliberately, and this is the opposite of what "I only want the
+# helmet" first suggests. A mask-gate test showed two things: (1) rembg is unreliable
+# on this subject -- chrome reflections, a wispy horsehair plume and a competing stand
+# make salient-object segmentation swing from 0.1% to 45% of the frame across the
+# orbit; (2) the scene contains a CHECKERBOARD calibration target, which is the best
+# SfM feature source present, while the chrome helmet itself has almost no stable
+# features. Masking would discard exactly the features that give accurate poses. So we
+# reconstruct the FULL scene (great registration) and isolate the free-standing helmet
+# SPATIALLY afterwards (crop box / tight train.bounds) -- which works here precisely
+# because, unlike the wall-embedded Pavillon relief, the helmet is separable in 3D.
 generate_masks:
-  enabled: true
-  backend: rembg             # salient-object; switch to sam2 if the helmet is not salient
-  dilate_px: 6
-  minimum_area_fraction: 0.05
-  manual_review: true        # verify a few masks before committing a long run
+  enabled: false
 
 run_colmap:
   matcher: exhaustive        # orbit + multi-source: no single temporal ordering
   mapper_backend: glomap     # robust global SfM (2.2x registration on the Pavillon)
   camera_model: OPENCV
-  single_camera: false       # pro camera and iPhone have DIFFERENT intrinsics
-  use_masks: true            # mask-only features: ignore the environment
+  single_camera: true        # single clip to start; false when mixing cameras
+  use_masks: false           # use the checkerboard + room: the helmet has few features
   sequential_overlap: 15
 
 validate_colmap:
@@ -71,13 +75,13 @@ train:
   train_run_id: casque_gsplat
   max_iterations: 30000
   sh_degree: 3
-  use_masks: true            # supervise only the helmet
+  use_masks: false           # full scene; isolate the helmet at export (crop)
   antialiasing: true
   checkpoint_interval: 5000
   validation_interval: 1000
   # Two cameras with different colour response -> reconcile with per-image latents.
   # This is the mechanism validated on the Pavillon multi-clip merge.
-  appearance_embedding: true
+  appearance_embedding: false  # single clip; turn ON when adding the pro/other clips
   appearance_model: affine   # try bilateral only if vignetting/spatial response appears
   densification:
     strategy: mcmc           # explicit budget target; no grad_threshold to tune
