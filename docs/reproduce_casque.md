@@ -13,7 +13,7 @@ therefore call for opposite settings.
 | Subject vs scene | relief carved *into* a wall | **free-standing** helmet | isolate the helmet **in 3D** (crop), not by mask — see below |
 | Cameras | one iPhone clip | **pro camera + iPhone** | **appearance embeddings** reconcile the two responses |
 | Surface method | 2DGS failed (no multi-view normals) | multi-view surface | **2DGS should work** — try it for the mesh |
-| Interest | the whole panel | the **helmet only** | mask-supervised training, 360° orbit video |
+| Interest | the whole panel | the **helmet only** | spatial crop to the helmet; 360° orbit video |
 
 The two things carried over from the Pavillon: **normal-consistency** (a cleaner mesh)
 and the **anti-floater** prune. Everything else is inverted.
