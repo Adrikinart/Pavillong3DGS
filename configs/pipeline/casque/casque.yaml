@@ -94,6 +94,12 @@ train:
   bounds:
     enabled: true
     margin: 0.5
+    # OBJECT-ISOLATION (two-pass): the first full-scene run put ~50% of the budget on
+    # the room. This tight box (centre = camera look-at of THIS reconstruction, in the
+    # normalized frame) prunes the environment so the budget concentrates on the
+    # helmet. Re-derive the centre for a fresh SfM; stable across --from-stage train.
+    box_center: [-0.17, 0.17, 0.22]
+    box_half_extent: 0.5
   floater:
     enabled: true
     max_scale_frac: 0.15

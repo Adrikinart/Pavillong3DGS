@@ -188,15 +188,23 @@ class GsplatBackend(TrainingBackend):
         # inside the captured room and kill runaway floaters.
         box_lo = box_hi = None
         if cfg.bounds.enabled:
-            from .dataset import _center_from_viewmat
-            pts = [train_ds.points] if len(train_ds.points) else []
-            cams = np.array([_center_from_viewmat(s.viewmat) for s in train_ds.samples])
-            allp = np.concatenate(pts + [cams], axis=0) if pts else cams
-            lo, hi = allp.min(0), allp.max(0)
-            m = cfg.bounds.margin * (hi - lo)
-            box_lo = torch.tensor(lo - m, dtype=torch.float32, device=device)
-            box_hi = torch.tensor(hi + m, dtype=torch.float32, device=device)
-            log.info("room box (normalized): lo=%s hi=%s", np.round(lo - m, 2), np.round(hi + m, 2))
+            if cfg.bounds.box_center is not None and cfg.bounds.box_half_extent is not None:
+                # explicit tight object box: prune the environment, focus the budget
+                c = np.asarray(cfg.bounds.box_center, dtype=np.float32)
+                he = float(cfg.bounds.box_half_extent)
+                lo, hi = c - he, c + he
+                log.info("OBJECT box (normalized): centre=%s half_extent=%.2f", np.round(c, 2), he)
+            else:
+                from .dataset import _center_from_viewmat
+                pts = [train_ds.points] if len(train_ds.points) else []
+                cams = np.array([_center_from_viewmat(s.viewmat) for s in train_ds.samples])
+                allp = np.concatenate(pts + [cams], axis=0) if pts else cams
+                lo0, hi0 = allp.min(0), allp.max(0)
+                m = cfg.bounds.margin * (hi0 - lo0)
+                lo, hi = lo0 - m, hi0 + m
+                log.info("room box (normalized): lo=%s hi=%s", np.round(lo, 2), np.round(hi, 2))
+            box_lo = torch.tensor(lo, dtype=torch.float32, device=device)
+            box_hi = torch.tensor(hi, dtype=torch.float32, device=device)
 
         # appearance state travels in the checkpoint's `extra` (it is not a
         # per-Gaussian tensor, so it cannot ride in params/optimizers)

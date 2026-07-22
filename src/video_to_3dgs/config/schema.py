@@ -156,10 +156,19 @@ class DensifyCfg(_Base):
 
 
 class BoundsCfg(_Base):
-    """Constrain Gaussians to the captured room volume (AABB of cameras+points)."""
+    """Constrain Gaussians to a volume.
+
+    By default the volume is the auto AABB of (cameras + points) x (1+margin) -- a
+    generous room bound that only culls runaway floaters. For an OBJECT capture where
+    the subject occupies a small part of the scene (a helmet in a room), set an
+    explicit tight box via ``box_center`` + ``box_half_extent`` to prune the
+    environment and concentrate the Gaussian budget on the object. The centre is in
+    the NORMALIZED frame (read it off the camera look-at of the reconstruction)."""
     enabled: bool = True
-    margin: float = 0.5          # fraction of the scene extent added beyond the box
-    prune_every: int = 500       # suppress out-of-room Gaussians this often
+    margin: float = 0.5          # fraction of the scene extent added beyond the auto box
+    prune_every: int = 500       # suppress out-of-box Gaussians this often
+    box_center: Optional[list[float]] = None      # explicit box centre (normalized frame)
+    box_half_extent: Optional[float] = None       # explicit box half-size (per axis)
 
 
 class FloaterCfg(_Base):
