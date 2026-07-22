@@ -301,8 +301,13 @@ class GsplatBackend(TrainingBackend):
 
             want_normal = (cfg.normal_consistency.enabled
                            and step >= cfg.normal_consistency.start_iter)
-            want_depth = (depth_bank is not None and step >= cfg.depth_prior.start_iter) \
-                or want_normal
+            # Two distinct questions, previously conflated in one flag: whether the depth
+            # LOSS applies, and whether we need a depth RENDER. Normal-consistency needs
+            # the render too, so with the depth prior disabled and normals enabled the
+            # combined flag sent a None depth bank into the loss block below.
+            want_depth_loss = (depth_bank is not None
+                               and step >= cfg.depth_prior.start_iter)
+            want_depth = want_depth_loss or want_normal
             if want_depth:
                 rgb, depth_map, alphas, info = self._rasterize(
                     gsplat, params, vm, K, w, h, sh_now, near, far, with_depth=True)
@@ -318,7 +323,7 @@ class GsplatBackend(TrainingBackend):
             loss, l1, ssim_val = photometric_loss(render, gt, mask_t, cfg.l1_lambda,
                                                   cfg.ssim_lambda)
             depth_loss_val = 0.0
-            if want_depth:
+            if want_depth_loss:
                 tgt = depth_bank.get(train_ds.samples[idx].name, device, (h, w))
                 if tgt is not None:
                     dl = pearson_depth_loss(depth_map[0, ..., 0], tgt, mask_t)
