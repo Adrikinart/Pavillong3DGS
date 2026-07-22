@@ -196,3 +196,106 @@ def _draw_box(ax, crop_box: dict, axes: tuple[int, int]) -> None:
     xs = [lo[i], hi[i], hi[i], lo[i], lo[i]]
     ys = [lo[j], lo[j], hi[j], hi[j], lo[j]]
     ax.plot(xs, ys, "r-", lw=1)
+
+
+# --------------------------------------------------------------------------- #
+# F5 — SfM result: sparse point cloud + camera frusta
+# --------------------------------------------------------------------------- #
+def camera_poses(sparse_dir: Path, out: Path, *, max_points: int = 60000,
+                 frustum_scale: float = 0.05, elev: float = 20.0,
+                 azim: float = -60.0, title: str | None = None) -> Path | None:
+    """3D view + top-down view of the COLMAP solution: RGB point cloud with a
+    frustum per registered camera. CPU-only (colmap_io + matplotlib)."""
+    sparse_dir = Path(sparse_dir)
+    if not (sparse_dir / "points3D.bin").exists():
+        return None
+    from ..colmap_io import read_model
+    cams, images, points = read_model(sparse_dir)
+
+    xyz = np.array([p.xyz for p in points.values()])
+    rgb = np.array([p.rgb for p in points.values()]) / 255.0
+    # robust crop: sparse SfM clouds have far outliers that would flatten the plot
+    lo, hi = np.percentile(xyz, 2, axis=0), np.percentile(xyz, 98, axis=0)
+    keep = np.all((xyz >= lo) & (xyz <= hi), axis=1)
+    xyz, rgb = xyz[keep], rgb[keep]
+    if len(xyz) > max_points:
+        sel = np.random.default_rng(0).choice(len(xyz), max_points, replace=False)
+        xyz, rgb = xyz[sel], rgb[sel]
+
+    ims = sorted(images.values(), key=lambda im: im.name)
+    centers = np.array([im.camera_center() for im in ims])
+    extent = float(np.linalg.norm(np.ptp(np.concatenate([xyz, centers]), axis=0)))
+    fr = frustum_scale * extent
+
+    # canonical frame: z = trajectory-plane normal signed by the images' up
+    # direction, x = dominant trajectory axis — so the plot is right side up
+    # regardless of COLMAP's arbitrary world axes
+    _, _, vt = np.linalg.svd(centers - centers.mean(0), full_matrices=False)
+    up_mean = np.mean([im.rotmat().T @ np.array([0.0, -1.0, 0.0]) for im in ims],
+                      axis=0)
+    e3 = vt[2] if np.dot(vt[2], up_mean) >= 0 else -vt[2]
+    e1 = vt[0]
+    e2 = np.cross(e3, e1)
+    Rw = np.stack([e1, e2, e3])
+
+    # frustum corner rays in world space, one pyramid per registered image
+    segs = []
+    for im in ims:
+        cam = cams[im.camera_id]
+        K = cam.K()
+        corners_px = np.array([[0, 0], [cam.width, 0], [cam.width, cam.height],
+                               [0, cam.height]], dtype=np.float64)
+        d = np.column_stack([(corners_px[:, 0] - K[0, 2]) / K[0, 0],
+                             (corners_px[:, 1] - K[1, 2]) / K[1, 1],
+                             np.ones(4)])
+        d /= np.linalg.norm(d, axis=1, keepdims=True)
+        c = Rw @ im.camera_center()
+        world = c + (Rw @ im.rotmat().T @ (d.T * fr)).T
+        segs += [[c, w] for w in world]
+        segs += [[world[i], world[(i + 1) % 4]] for i in range(4)]
+    xyz = xyz @ Rw.T
+    centers = centers @ Rw.T
+
+    # view from behind the cameras, looking toward the point cloud
+    obj_dir = xyz.mean(0) - centers.mean(0)
+    if np.linalg.norm(obj_dir[:2]) > 1e-3 * extent:
+        azim = float(np.degrees(np.arctan2(obj_dir[1], obj_dir[0]))) + 210.0
+
+    plt = _mpl()
+    from mpl_toolkits.mplot3d.art3d import Line3DCollection
+    fig = plt.figure(figsize=(14, 7))
+
+    ax3 = fig.add_subplot(1, 2, 1, projection="3d")
+    ax3.scatter(xyz[:, 0], xyz[:, 1], xyz[:, 2], c=rgb, s=0.4, alpha=0.6,
+                linewidths=0, rasterized=True)
+    ax3.add_collection3d(Line3DCollection(segs, colors="crimson", lw=0.4, alpha=0.6))
+    ax3.plot(centers[:, 0], centers[:, 1], centers[:, 2], "-", color="crimson",
+             lw=0.8, alpha=0.8)
+    allp = np.concatenate([xyz, centers])
+    span = np.ptp(allp, axis=0)
+    mid, half = allp.min(0) + span / 2, span.max() / 2
+    ax3.set_xlim(mid[0] - half, mid[0] + half)
+    ax3.set_ylim(mid[1] - half, mid[1] + half)
+    ax3.set_zlim(mid[2] - half, mid[2] + half)
+    ax3.set_box_aspect((1, 1, 1))
+    ax3.view_init(elev=elev, azim=azim)
+    ax3.set_axis_off()
+    ax3.set_title(f"{len(ims)} cameras · {len(points):,} points")
+
+    # top-down: the canonical frame's xy is the camera-trajectory plane
+    ax2 = fig.add_subplot(1, 2, 2)
+    p2, c2 = xyz[:, :2], centers[:, :2]
+    ax2.scatter(p2[:, 0], p2[:, 1], c=rgb, s=0.4, alpha=0.6, linewidths=0,
+                rasterized=True)
+    ax2.plot(c2[:, 0], c2[:, 1], "-", color="crimson", lw=1.0, alpha=0.8)
+    ax2.scatter(c2[:, 0], c2[:, 1], color="crimson", s=6, zorder=3)
+    ax2.set_aspect("equal")
+    ax2.set_xticks([]); ax2.set_yticks([])
+    ax2.set_title("top view (camera trajectory plane)")
+
+    fig.suptitle(title or "SfM: camera poses + sparse point cloud")
+    fig.tight_layout()
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=130, bbox_inches="tight"); plt.close(fig)
+    return out

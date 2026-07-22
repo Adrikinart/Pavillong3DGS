@@ -5,6 +5,13 @@ An object-centric orbit capture of a helmet (Saint-Georges), shot with a
 Pavillon here, because the two captures sit at opposite ends of almost every axis and
 therefore call for opposite settings.
 
+<p align="center">
+  <img src="assets/casque/poses.png" width="900" alt="Casque camera poses and sparse point cloud"><br>
+  <em>The SfM solution: 134 registered cameras orbiting the helmet at two
+  elevations, and the 36 k-point sparse cloud. Regenerate with
+  <code>python scripts/make_demo_assets.py casque_orbit_07ccd886</code>.</em>
+</p>
+
 ## Why this capture differs from the Pavillon
 
 | Axis | Pavillon (scene) | Casque (object) | Consequence |

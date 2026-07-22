@@ -4,8 +4,9 @@ Raw handheld video → a trained, evaluated, exportable **3D Gaussian Splatting*
 reconstruction, orchestrated end-to-end on a Slurm GPU cluster.
 
 <p align="center">
-  <img src="docs/assets/orbit.gif" width="620" alt="Orbit render of the reconstructed carved panel"><br>
-  <em>Novel-view orbit of the reconstructed carved ceiling panel (2560px model, 1.24 M Gaussians)</em>
+  <img src="docs/assets/pavillon/orbit.gif" width="620" alt="Orbit render of the reconstructed carved panel"><br>
+  <em>Novel-view orbit of the reconstructed carved ceiling panel
+  (recommended 2560 px model, 359 k Gaussians)</em>
 </p>
 
 ---
@@ -135,7 +136,7 @@ changes:
 <sub>*the 3.0 M row is from the multi-clip dataset, where the doubling experiment was run.</sub>
 
 <p align="center">
-  <img src="docs/assets/capacity_curve.png" width="960" alt="Gaussian capacity sweep"><br>
+  <img src="docs/assets/pavillon/capacity_curve.png" width="960" alt="Gaussian capacity sweep"><br>
   <em>Five capacity points, everything else held fixed. PSNR and SSIM peak at 375 k;
   LPIPS bottoms at 750 k; the catastrophic-view tail vanishes at ≤375 k.</em>
 </p>
@@ -168,7 +169,7 @@ incidence, which identified a *spatial-frequency deficit* (we were throwing away
 detail) and motivated the high-detail run.
 
 <p align="center">
-  <img src="docs/assets/per_view_metrics.png" width="760" alt="Per-view metrics"><br>
+  <img src="docs/assets/pavillon/per_view_metrics.png" width="760" alt="Per-view metrics"><br>
   <em>Per-view metrics — the tail, not the mean, is where the diagnosis lives</em>
 </p>
 
@@ -177,25 +178,33 @@ detail) and motivated the high-detail run.
 ## Visual results
 
 <p align="center">
-  <img src="docs/assets/qualitative.png" width="900" alt="Ground truth vs render vs error"><br>
+  <img src="docs/assets/pavillon/poses.png" width="900" alt="GLOMAP camera poses and sparse point cloud"><br>
+  <em><b>Where reconstruction starts.</b> The GLOMAP solution: 282 registered
+  cameras (red frusta) sweeping handheld arcs in front of the panel, and the
+  153 k-point sparse cloud they triangulate. Left: 3D view from behind the
+  cameras; right: top view in the camera-trajectory plane.</em>
+</p>
+
+<p align="center">
+  <img src="docs/assets/pavillon/qualitative.png" width="900" alt="Ground truth vs render vs error"><br>
   <em>Held-out views: ground truth │ render │ error map</em>
 </p>
 
 <p align="center">
-  <img src="docs/assets/floater_spatial.png" width="820" alt="Floater removal"><br>
+  <img src="docs/assets/pavillon/floater_spatial.png" width="820" alt="Floater removal"><br>
   <em><b>Anti-floater regularization.</b> Baseline (top) sprays a diffuse streak of
   faint Gaussians toward the cameras; the regularized model (bottom) is a tight,
   solid cluster. Median opacity 0.51 → 0.88, max scale 1.00 → 0.16.</em>
 </p>
 
 <p align="center">
-  <img src="docs/assets/training_curves.png" width="760" alt="Training curves">
+  <img src="docs/assets/pavillon/training_curves.png" width="760" alt="Training curves">
 </p>
 
 ### Surface mesh
 
 <p align="center">
-  <img src="docs/assets/mesh_preview.png" width="900" alt="Extracted relief mesh"><br>
+  <img src="docs/assets/pavillon/mesh_preview.png" width="900" alt="Extracted relief mesh"><br>
   <em>TSDF-fused triangle mesh — the panel's planks and carved cross-members are
   resolved. Adding depth-normal consistency (`train.normal_consistency`) raises surface
   normal coherence from 0.81 to 0.92.</em>
@@ -291,6 +300,9 @@ Analysis utilities:
 ```bash
 python scripts/floater_spatial.py <dataset_id> <a.ply> <b.ply> out.png   # floater comparison, CPU-only
 python scripts/gsplat_selftest.py                                        # per-node CUDA/gsplat check
+python scripts/make_demo_assets.py <dataset_id> --train-run <id>         # README demo assets: SfM pose
+                                                                         # figure, orbit GIF, report figures
+                                                                         # -> docs/assets/<object>/ (CPU-only)
 ```
 
 ---
