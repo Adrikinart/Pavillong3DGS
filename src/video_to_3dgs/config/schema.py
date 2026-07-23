@@ -133,10 +133,16 @@ class ObjectMaskCfg(_Base):
     cost. See docs/technique_transfer.md.
     """
     enabled: bool = False
-    source: Literal["mesh", "box"] = "mesh"
+    # "auto" needs no prior reconstruction and no hand-measured coordinates: on a capture
+    # measured to be an orbit, the subject sits where the optical axes converge, and the
+    # capture's own camera distance supplies the only length scale available. That makes a
+    # brand-new dataset self-configuring, which "mesh" and "box" cannot be -- both need
+    # numbers that only exist after a first pass.
+    source: Literal["auto", "mesh", "box"] = "mesh"
     mesh_path: Optional[str] = None          # cropped object mesh, normalized frame
     box_center: Optional[list[float]] = None  # used when source == "box"
     box_half_extent: Optional[float] = None
+    auto_extent_frac: float = 0.30    # "auto": half-extent as a fraction of camera distance
     splat_px: int = 11        # mesh mode: radius drawn per projected vertex before closing
     dilate_px: int = 14       # slack; a tight silhouette clips thin structure (the plume)
     min_area_fraction: float = 0.0   # warn below this; 0 disables the check

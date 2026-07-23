@@ -123,11 +123,33 @@ class ObjectMasksStage(Stage):
     @staticmethod
     def _volume_key(c) -> str:
         """Short identity of the subject volume, for detecting a silent redefinition."""
+        if c.source == "auto":
+            return f"auto:{c.auto_extent_frac}:d{c.dilate_px}"
         if c.source == "box":
             return f"box:{c.box_center}:{c.box_half_extent}:d{c.dilate_px}"
         return f"mesh:{c.mesh_path}:s{c.splat_px}:d{c.dilate_px}"
 
     def _source_points(self, ctx: StageContext, c) -> np.ndarray:
+        if c.source == "auto":
+            from ..reporting.cameras import capture_geometry
+            from ..training.dataset import ColmapDataset
+            geom = capture_geometry(ColmapDataset(ctx.layout, "train", cache_images=False))
+            if not geom.is_orbit:
+                raise InputValidationError(
+                    "object_masks: source='auto' assumes the rig orbits its subject "
+                    f"(inwardness {geom.inwardness:.2f} < threshold). On a single-sided "
+                    "capture the optical axes converge inside the camera swarm rather than "
+                    "on the subject, so the centre would be meaningless -- give an explicit "
+                    "box or mesh instead.")
+            h = c.auto_extent_frac * geom.cam_distance
+            ctx.logger.info("object masks (auto): centre %s, half-extent %.3f "
+                            "(%.2f x camera distance %.3f), rig inwardness %.2f",
+                            np.round(geom.center, 3), h, c.auto_extent_frac,
+                            geom.cam_distance, geom.inwardness)
+            offs = np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)],
+                            dtype=np.float64)
+            return geom.center[None, :] + offs * h
+
         if c.source == "box":
             if c.box_center is None or c.box_half_extent is None:
                 raise InputValidationError(
@@ -178,7 +200,7 @@ class ObjectMasksStage(Stage):
         uv = (s.K @ cam.T).T
         uv = uv[:, :2] / uv[:, 2:3]
 
-        if c.source == "box":
+        if c.source in ("box", "auto"):
             hull = cv2.convexHull(uv.astype(np.float32).reshape(-1, 1, 2))
             cv2.fillConvexPoly(mask, hull.astype(np.int32), 255)
         else:

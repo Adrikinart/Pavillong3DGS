@@ -1,0 +1,125 @@
+# Casque helmet at NATIVE 4K resolution.
+#
+# Rationale, and it is the only lever left. On the helmet region every model we have trained
+# is statistically TIED at ~22.7 dB: 190k to 12M Gaussians (a 63x capacity range), masked and
+# unmasked, with and without a specular head. The subject is DATA-limited, not model-limited,
+# so no further modelling knob will move it.
+#
+# The remaining data-side lever is resolution: the source clip is 3840x2160 and every run so
+# far downscaled it to 2560, discarding 1.5x linear detail. On the Pavillon that same change
+# (1600 -> 2560) was worth +1.8 dB and removed the catastrophic-view tail entirely.
+#
+# Costs a fresh SfM (own dataset dir), and 4K frames make COLMAP substantially slower.
+object_name: casque_orbit_4k          # SHARE the dataset dir: reuses the existing SfM
+capture_mode: orbit
+profile:
+  name: rtxpro
+videos:
+  - "/home/AdrienK/Datasets/VideosForNVSpersonnal/casque saint georges doudou/IMG_8281.MOV"
+
+extract_frames:
+  strategy: fixed_fps
+  target_fps: 3.0
+  max_frames: 400
+  min_frames: 80
+  resize_long_edge: null      # NATIVE 3840; see the header
+
+filter_frames:
+  enabled: true
+  blur_var_min: 50.0
+
+# Off, deliberately: see the header. The subject is isolated AFTER SfM, not before.
+generate_masks:
+  enabled: false
+
+run_colmap:
+  matcher: exhaustive
+  mapper_backend: glomap
+  camera_model: OPENCV
+  single_camera: true
+  use_masks: false
+  sequential_overlap: 15
+
+validate_colmap:
+  minimum_registration_ratio: 0.60
+  hard_fail: false
+
+normalize_scene:
+  method: cameras
+
+# Project the subject volume into every view. `mesh` follows the real silhouette (median
+# 29% of frame here); `box` is self-contained but much looser (59%), because a cube in
+# perspective projects to a hexagon far larger than the object inside it.
+#
+# The mesh below is produced by this project: run casque_2dgs.yaml, then
+#   python scripts/crop_object.py exports/casque_2dgs_nodist/mesh.ply \
+#          exports/casque_2dgs_nodist/mesh_helmet.ply \
+#          --center -0.183 0.166 0.220 --half-extent 0.24
+# For a cold start with no mesh yet, switch to:
+#   source: box, box_center: [-0.183, 0.166, 0.220], box_half_extent: 0.24
+# The centre is not guessed: it is where all the optical axes converge, which on an orbit
+# IS the subject (see reporting/cameras.py::capture_geometry). Deriving it from the point
+# cloud instead would land on the checkerboard, which has the features the helmet lacks.
+#
+# To keep the checkerboard base in the deliverable, raise box_half_extent (~0.35) or
+# increase dilate_px; the helmet-only numbers above were measured with the mesh.
+# source: auto -- a brand-new dataset has no mesh and no hand-measured box. On an orbit the
+# subject is where the optical axes converge, and the capture's own camera distance gives the
+# scale, so the stage configures itself. It refuses on a non-orbit rig rather than guessing.
+object_masks:
+  enabled: true
+  source: auto
+  auto_extent_frac: 0.30
+  dilate_px: 10
+  min_area_fraction: 0.10        # warn if the volume projects to less than 10% of frame
+
+split_dataset:
+  strategy: pose_aware
+
+train:
+  backend: gsplat
+  train_run_id: casque_helmet_4k
+  max_iterations: 30000
+  sh_degree: 3
+  use_masks: true                # the whole point of this config
+  antialiasing: true
+  checkpoint_interval: 5000
+  validation_interval: 1000
+  appearance_embedding: false    # single clip: measured a tie (-0.09 dB, CI [-0.60,+0.41])
+  densification:
+    strategy: mcmc
+    start_iteration: 500
+    stop_iteration: 15000
+    interval: 100
+    prune_opacity: 0.005
+    # 375k sits at the top of a curve that is FLAT from 190k to 6M, so this is the cheap
+    # end of a plateau rather than a tuned optimum. Do not copy it to an unmasked run.
+    cap_max: 375000
+    noise_lr: 5.0e5
+  bounds:
+    enabled: true
+    margin: 0.5
+  floater:
+    enabled: true
+    max_scale_frac: 0.15
+    min_opacity: 0.005
+  # OFF: measured -0.89 dB on this capture. DepthAnything reports the depth of the
+  # REFLECTED scene on a mirror-like surface, so a chrome helmet gets confidently wrong
+  # targets exactly where photometric supervision is weakest.
+  depth_prior:
+    enabled: false
+  normal_consistency:
+    enabled: true
+    lambda_normal: 0.05
+    start_iter: 7000
+
+report:
+  enabled: true
+  figures: [training_curves, qualitative, gaussian_stats, per_view, gaussian_centers]
+  videos: [orbit, progression]
+  orbit_frames: 180
+  orbit_arc_deg: 360.0
+  orbit_elevation_deg: 15.0
+  orbit_radius_scale: 1.7
+  object_crop_scale: 0.5
+  video_fps: 30
