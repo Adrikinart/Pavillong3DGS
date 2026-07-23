@@ -53,7 +53,14 @@ class EvaluateStage(Stage):
         train_ds = ColmapDataset(ctx.layout, "train", downscale=ctx.config.train.image_downscale)
         params, optimizers = create_splats(train_ds.points, train_ds.point_colors,
                                            ctx.config.train.sh_degree, device)
+        # A specular head stores per-Gaussian coefficients that create_splats does not
+        # allocate; attach the slot BEFORE loading or the bank is dropped and we score a
+        # model that was never trained (see training/specular.py).
+        from ..training.specular import attach_specular_bank
+        spec_degree = attach_specular_bank(params, ckpt, device)
         step = load_checkpoint(ckpt, params, optimizers)
+        if spec_degree is not None:
+            ctx.logger.info("evaluating with the specular head (degree %d)", spec_degree)
         backend = GsplatBackend()
 
         # Restore the per-image appearance model, if the run used one. Without
@@ -106,7 +113,8 @@ class EvaluateStage(Stage):
             def render_fn(i, ds=ds):
                 vm, K, w, h = ds.camera_tensors(i, device)
                 r, _, _ = backend._rasterize(gsplat, params, vm, K, w, h,
-                                             ctx.config.train.sh_degree, near, 1e10)
+                                             ctx.config.train.sh_degree, near, 1e10,
+                                             spec_degree=spec_degree)
                 r = r[0]
                 if app_model is not None:
                     from ..training.appearance import clip_key

@@ -36,6 +36,8 @@ class CheckpointRenderer:
         self._load_checkpoint = load_checkpoint
         ds = ColmapDataset(layout, "train", downscale=1)
         self.params, _ = create_splats(ds.points, ds.point_colors, sh_degree, device)
+        from ..training.specular import attach_specular_bank
+        self.spec_degree = attach_specular_bank(self.params, ckpt, device)
         load_checkpoint(ckpt, self.params, {})
         self.dataset = ds
         self.near = near
@@ -107,7 +109,8 @@ class CheckpointRenderer:
         with torch.no_grad():
             r, _, _ = self._backend._rasterize(self._gsplat, self._active, vm, K,
                                                cam.width, cam.height, self.sh_degree,
-                                               self.near, self.far)
+                                               self.near, self.far,
+                                               spec_degree=self.spec_degree)
         img = r[0].clamp(0, 1).cpu().numpy()
         return (img * 255).astype(np.uint8)
 

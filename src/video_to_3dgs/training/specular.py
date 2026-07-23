@@ -82,6 +82,32 @@ def specular_colors(gsplat, params: dict, viewmat: torch.Tensor,
     return torch.clamp_min(rgb + spec, 0.0)
 
 
+def attach_specular_bank(params: dict, checkpoint_path, device) -> int | None:
+    """Give ``params`` an ``sh_spec`` entry matching a checkpoint that has one.
+
+    Every inference path (evaluate, export, the report renderer) rebuilds ``params`` from
+    ``create_splats``, which knows nothing about this head. Loading a checkpoint into a dict
+    that lacks the key silently drops it, and the model then renders with its diffuse bank
+    alone -- which is *not* the model that was trained, because part of the appearance now
+    lives in the specular bank. That failure is quiet and looks exactly like the method
+    being bad: measured on the Casque helmet it cost 3.66 dB on the test split while
+    validation, computed inside the trainer where the head is applied, showed a tie.
+
+    Returns the specular SH degree to render with, or None if the checkpoint has no head.
+    """
+    import torch
+
+    obj = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    saved = obj.get("params", obj)
+    if "sh_spec" not in saved:
+        return None
+    k = saved["sh_spec"].shape[1]
+    degree = int(round(k ** 0.5)) - 1
+    params["sh_spec"] = torch.nn.Parameter(
+        torch.zeros(params["means"].shape[0], k, 3, device=device))
+    return degree
+
+
 def init_specular_bank(n: int, degree: int, device) -> torch.Tensor:
     """Zero-initialised specular coefficients: ``(N, (degree+1)^2, 3)``.
 
