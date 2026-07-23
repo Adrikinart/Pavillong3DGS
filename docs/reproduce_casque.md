@@ -189,6 +189,54 @@ wrong: the periodic floater opacity-kill firing in the same iteration as validat
 kills 0 Gaussians here), and near-dead Gaussians fogging the render (pruning opacity
 < 0.005 mid-training changes PSNR by 0.00 dB).
 
+## The helmet-only deliverable
+
+`configs/pipeline/casque/casque_helmet.yaml` restricts the training loss to the subject and
+is the config to use when the helmet is the product:
+
+| | full-scene model | **helmet deliverable** |
+|---|---|---|
+| `cap_max` | 6 M | **375 k** |
+| Gaussians | 5.27 M | **341 k** |
+| `.ply` | 1.3 GB | **81 MB** |
+| test PSNR | 23.41 (whole frame) | 22.79 (subject) |
+
+The two PSNR columns are **not comparable** — different pixel populations. What is
+comparable is the masked capacity sweep, where 190 k to 6 M are all statistically tied: the
+subject never needed the capacity.
+
+```bash
+sbatch --partition=rtxpro --gres=gpu:1 --cpus-per-task=8 \
+  scripts/slurm/train.sbatch configs/pipeline/casque/casque_helmet.yaml
+```
+
+Masks are produced by the pipeline's `object_masks` stage (after SfM, so it has poses),
+not by hand. On this capture it writes 134 masks at 28.6 % median coverage and warns that
+3 views project empty — those are the tangential close-ups where the subject centre falls
+outside the frame, and they contribute nothing to the loss.
+
+### Where the remaining error is
+
+<p align="center">
+  <img src="assets/casque/specular_error.png" width="680"
+       alt="Error by material class within the subject"><br>
+  <em>Regenerate with <code>python scripts/specular_diagnostic.py casque_orbit_07ccd886
+  casque_helmet_masked --erode 60</code>.</em>
+</p>
+
+The chrome dome is the worst material class at **22.3 dB against gold's 24.2** — so the
+visible softness on the reflective surface is real and measurable, not an impression.
+Two caveats keep it in proportion:
+
+- **Erode the mask before believing this.** The masks are deliberately dilated, so they
+  carry a rim of background. Unerorded, "dark" scores 21.1 dB and looks like a second
+  problem area; eroded 60 px it jumps to 25.9 — it was almost entirely background. Chrome
+  survives the same check (21.0 → 22.3 and then flat), which is what makes it credible.
+- **The headroom is bounded.** If *every* class reached the best one, the subject would go
+  from 23.6 to 25.9 dB — about **+2.2 dB**, and only part of that is specular. Weigh that
+  against implementing GaussianShader / 3DGS-DR / Spec-Gaussian, all of which mean changes
+  to the rasteriser or appearance model.
+
 ## What to watch for
 
 - **Appearance drift** (logged): if the pro/iPhone response differs a lot, the affine

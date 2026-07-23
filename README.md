@@ -416,8 +416,35 @@ tells them apart.
   comparison, not a controlled one.</em>
 </p>
 
-Because masks are off, the exported model contains a whole auditorium — the helmet is
-isolated **at export**, not during training:
+**The helmet-only config.** `configs/pipeline/casque/casque_helmet.yaml` restricts the
+training loss to the subject via the `object_masks` stage (projected after SfM, so it never
+touches pose estimation):
+
+| | full-scene model | **helmet deliverable** |
+|---|---|---|
+| `cap_max` | 6 M | **375 k** |
+| Gaussians | 5.27 M | **341 k** |
+| `.ply` | 1.3 GB | **81 MB** |
+
+**16× smaller**, and the masked capacity sweep says 190 k–6 M are all tied, so nothing was
+given up. (PSNR across the two is not comparable — different pixel populations.)
+
+**Where the error that remains actually sits:**
+
+<p align="center">
+  <img src="docs/assets/casque/specular_error.png" width="640"
+       alt="Error by material class within the subject"></p>
+
+The chrome dome is the worst class (**22.3 dB** vs gold's **24.2**) — the softness on the
+reflective surface is measurable, not just an impression. But erode the mask before
+believing any of it: unerorded, "dark" looks like a second problem area at 21.1 dB and is
+almost entirely *background rim* (25.9 dB once eroded). Chrome survives that check, which
+is what makes it credible. Headroom is bounded: if every class matched the best one the
+subject would gain **~2.2 dB** — worth weighing before implementing GaussianShader /
+3DGS-DR / Spec-Gaussian, which all mean rasteriser changes.
+
+Because the *full-scene* model contains a whole auditorium, that one isolates the helmet
+**at export** instead:
 
 ```bash
 # centre = the orbit's convergence point (where all optical axes meet)
