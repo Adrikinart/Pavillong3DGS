@@ -97,6 +97,23 @@ class MaskCfg(_Base):
     manual_review: bool = False
 
 
+class SpecularCfg(_Base):
+    """Reflection-direction specular head (Ref-NeRF style). See training/specular.py.
+
+    Each Gaussian gains a second, low-order SH bank evaluated at the REFLECTION direction
+    rather than the view direction, which is a far better-behaved function for a mirror-like
+    surface. Zero-initialised, so enabling it changes nothing until it learns.
+
+    Worth it only where specularity is actually the bottleneck -- measure first with
+    scripts/specular_diagnostic.py. On the Casque helmet the chrome dome trails the gold
+    crest by ~1.9 dB and the total headroom across ALL material classes is ~2.2 dB, so this
+    is a bounded win, not a transformation.
+    """
+    enabled: bool = False
+    sh_degree: int = 2        # (deg+1)^2*3 params/Gaussian: 27 at degree 2
+    lr: float = 2.5e-3        # matches the diffuse shN learning rate
+
+
 class ObjectMaskCfg(_Base):
     """Per-view masks made by projecting a 3D volume, used to restrict the TRAINING loss.
 
@@ -232,6 +249,7 @@ class TrainCfg(_Base):
     floater: "FloaterCfg" = Field(default_factory=lambda: FloaterCfg())
     depth_prior: "DepthPriorCfg" = Field(default_factory=lambda: DepthPriorCfg())
     normal_consistency: "NormalConsistencyCfg" = Field(default_factory=lambda: NormalConsistencyCfg())
+    specular: "SpecularCfg" = Field(default_factory=lambda: SpecularCfg())
     train_run_id: Optional[str] = None  # auto if None
     seed: int = 42
     max_iterations: int = 30000

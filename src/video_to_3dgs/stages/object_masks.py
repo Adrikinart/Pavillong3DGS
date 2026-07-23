@@ -52,6 +52,26 @@ class ObjectMasksStage(Stage):
         out = ctx.layout.masks_dir
         out.mkdir(parents=True, exist_ok=True)
 
+        # masks_dir is per-DATASET, not per-config, so two configs that share object_name
+        # but define different subject volumes overwrite each other's masks. That is easy to
+        # do by accident (a "helmet" config and a "helmet + base" config on one capture) and
+        # silent: training would simply use whichever volume was written last. Record the
+        # volume that produced these masks and say so when it changes.
+        prev = out / "object_mask_diagnostics.json"
+        if prev.exists():
+            try:
+                import json
+                old = json.loads(prev.read_text()).get("volume")
+                if old and old != self._volume_key(c):
+                    ctx.logger.warning(
+                        "object masks: overwriting masks built for a DIFFERENT subject "
+                        "volume (%s -> %s). Any training run that reused this dataset dir "
+                        "with the old volume must be re-run to stay consistent; give the "
+                        "configs different object_name values to keep both.",
+                        old, self._volume_key(c))
+            except Exception:                      # diagnostics are advisory, never fatal
+                pass
+
         seen: set[str] = set()
         fracs: list[float] = []
         empty: list[str] = []
@@ -81,6 +101,7 @@ class ObjectMasksStage(Stage):
             "coverage_max": float(f.max()),
             "empty_views": empty[:20],
             "source": c.source,
+            "volume": self._volume_key(c),
         }
         atomic_write_json(out / "object_mask_diagnostics.json", diag)
         ctx.logger.info("object masks: %d written, coverage min/p50/max %.1f%%/%.1f%%/%.1f%%, "
@@ -99,6 +120,13 @@ class ObjectMasksStage(Stage):
         return diag
 
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _volume_key(c) -> str:
+        """Short identity of the subject volume, for detecting a silent redefinition."""
+        if c.source == "box":
+            return f"box:{c.box_center}:{c.box_half_extent}:d{c.dilate_px}"
+        return f"mesh:{c.mesh_path}:s{c.splat_px}:d{c.dilate_px}"
+
     def _source_points(self, ctx: StageContext, c) -> np.ndarray:
         if c.source == "box":
             if c.box_center is None or c.box_half_extent is None:

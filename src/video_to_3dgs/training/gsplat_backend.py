@@ -52,17 +52,27 @@ class GsplatBackend(TrainingBackend):
 
     # ------------------------------------------------------------------ #
     def _rasterize(self, gsplat, params, sample_vm, K, width, height, sh_degree_now,
-                   near, far, with_depth=False):
+                   near, far, with_depth=False, spec_degree=None):
         import torch
         means = params["means"]
         quats = params["quats"]
         scales = torch.exp(params["scales"])
         opac = torch.sigmoid(params["opacities"])
-        colors = torch.cat([params["sh0"], params["shN"]], dim=1)  # (N,K,3)
+        if spec_degree is not None and "sh_spec" in params:
+            # Specular head on: evaluate BOTH SH banks here and hand the rasteriser finished
+            # RGB (sh_degree=None). The diffuse half reproduces the rasteriser's own SH path
+            # exactly, so with zero-initialised specular coefficients this branch is a no-op
+            # -- which is what makes a head-on run comparable to a head-off one.
+            from .specular import specular_colors
+            colors = specular_colors(gsplat, params, sample_vm, sh_degree_now, spec_degree)
+            sh_arg = None
+        else:
+            colors = torch.cat([params["sh0"], params["shN"]], dim=1)  # (N,K,3)
+            sh_arg = sh_degree_now
         renders, alphas, info = gsplat.rasterization(
             means=means, quats=quats, scales=scales, opacities=opac, colors=colors,
             viewmats=sample_vm[None], Ks=K[None], width=width, height=height,
-            sh_degree=sh_degree_now, near_plane=near, far_plane=far,
+            sh_degree=sh_arg, near_plane=near, far_plane=far,
             packed=False, rasterize_mode="antialiased",
             render_mode="RGB+ED" if with_depth else "RGB",
         )
@@ -124,6 +134,24 @@ class GsplatBackend(TrainingBackend):
         params, optimizers = create_splats(
             train_ds.points, train_ds.point_colors, cfg.sh_degree, device,
             lr_means=cfg.lr_means, scene_scale=max(scene_scale, 1e-3))
+
+        # Reflection-direction specular head. Its coefficients are PER-GAUSSIAN, so unlike
+        # the appearance model they must live in `params`/`optimizers`: the densification
+        # strategy reindexes every per-Gaussian tensor when it splits, clones or relocates,
+        # and a bank left outside would desynchronise from the primitives it belongs to.
+        spec_degree = None
+        if cfg.specular.enabled:
+            from .specular import init_specular_bank
+            import torch.nn as _nn
+            spec_degree = cfg.specular.sh_degree
+            n0 = params["means"].shape[0]
+            params["sh_spec"] = _nn.Parameter(
+                init_specular_bank(n0, spec_degree, device))
+            optimizers["sh_spec"] = torch.optim.Adam(
+                [params["sh_spec"]], lr=cfg.specular.lr, eps=1e-15)
+            log.info("specular head ON: reflection-direction SH degree %d "
+                     "(+%d params/Gaussian), zero-initialised",
+                     spec_degree, (spec_degree + 1) ** 2 * 3)
 
         # Per-image appearance model (multi-clip exposure/WB reconciliation).
         # Kept OUT of `optimizers`, which the densification strategy owns and
@@ -327,11 +355,12 @@ class GsplatBackend(TrainingBackend):
             want_depth = want_depth_loss or want_normal
             if want_depth:
                 rgb, depth_map, alphas, info = self._rasterize(
-                    gsplat, params, vm, K, w, h, sh_now, near, far, with_depth=True)
+                    gsplat, params, vm, K, w, h, sh_now, near, far, with_depth=True,
+                    spec_degree=spec_degree)
                 render = rgb[0]
             else:
                 renders, alphas, info = self._rasterize(gsplat, params, vm, K, w, h, sh_now,
-                                                        near, far)
+                                                        near, far, spec_degree=spec_degree)
                 render = renders[0]
             # per-image photometric correction (identity at init; cannot encode
             # geometry, only a global affine colour change)
@@ -445,7 +474,7 @@ class GsplatBackend(TrainingBackend):
                     def _render(i):
                         r = self._rasterize(gsplat, params, *ds.camera_tensors(i, device),
                                             min(cfg.sh_degree, _step // 1000),
-                                            near, far)[0][0]
+                                            near, far, spec_degree=spec_degree)[0][0]
                         if app_model is None:
                             return r
                         # score under the mean appearance of the view's OWN source clip
