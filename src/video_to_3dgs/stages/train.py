@@ -22,7 +22,7 @@ def resolve_train_run_id(ctx: StageContext) -> str:
 
 class TrainStage(Stage):
     name = "train"
-    depends_on = ("split_dataset",)
+    depends_on = ("split_dataset", "object_masks")
     needs_gpu = True
 
     def declared_inputs(self, ctx: StageContext) -> list[Artifact]:

@@ -97,6 +97,34 @@ class MaskCfg(_Base):
     manual_review: bool = False
 
 
+class ObjectMaskCfg(_Base):
+    """Per-view masks made by projecting a 3D volume, used to restrict the TRAINING loss.
+
+    Distinct from ``generate_masks``, and deliberately so. That stage runs before SfM and
+    feeds COLMAP, which is wrong for a subject like the Casque helmet: it has almost no
+    stable features while the checkerboard beside it has many, so masking before SfM throws
+    away the evidence that produces good poses. This stage runs *after* ``normalize_scene``,
+    when camera poses exist, and its masks are used only by the loss.
+
+    It also avoids segmentation entirely. ``rembg`` was measured on that capture and swung
+    between 0.1 % and 45 % of the frame across the orbit (chrome, a wispy plume, a competing
+    stand). Projecting a volume we already trust in 3D is deterministic and its errors are
+    geometric rather than semantic.
+
+    Why bother: with the loss restricted to the subject, the Gaussian budget stops mattering
+    (flat from 190 k to 6 M on the Casque), which is a ~30x smaller model at no measurable
+    cost. See docs/technique_transfer.md.
+    """
+    enabled: bool = False
+    source: Literal["mesh", "box"] = "mesh"
+    mesh_path: Optional[str] = None          # cropped object mesh, normalized frame
+    box_center: Optional[list[float]] = None  # used when source == "box"
+    box_half_extent: Optional[float] = None
+    splat_px: int = 11        # mesh mode: radius drawn per projected vertex before closing
+    dilate_px: int = 14       # slack; a tight silhouette clips thin structure (the plume)
+    min_area_fraction: float = 0.0   # warn below this; 0 disables the check
+
+
 class ColmapCfg(_Base):
     matcher: Literal["sequential", "exhaustive", "vocab_tree"] = "sequential"
     # mapper backend: colmap (incremental) or glomap (global; more robust on
@@ -314,6 +342,7 @@ class PipelineConfig(_Base):
     run_colmap: ColmapCfg = Field(default_factory=ColmapCfg)
     validate_colmap: ColmapValidationCfg = Field(default_factory=ColmapValidationCfg)
     normalize_scene: NormalizeCfg = Field(default_factory=NormalizeCfg)
+    object_masks: ObjectMaskCfg = Field(default_factory=ObjectMaskCfg)
     split_dataset: SplitCfg = Field(default_factory=SplitCfg)
     train: TrainCfg = Field(default_factory=TrainCfg)
     evaluate: EvalCfg = Field(default_factory=EvalCfg)

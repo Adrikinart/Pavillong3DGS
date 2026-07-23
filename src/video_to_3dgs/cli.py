@@ -27,6 +27,7 @@ from .stages.inspect_video import InspectVideoStage
 from .stages.extract_frames import ExtractFramesStage
 from .stages.filter_frames import FilterFramesStage
 from .stages.generate_masks import GenerateMasksStage
+from .stages.object_masks import ObjectMasksStage
 from .stages.run_colmap import RunColmapStage
 from .stages.validate_colmap import ValidateColmapStage
 from .stages.normalize_scene import NormalizeSceneStage
@@ -40,7 +41,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 STAGE_CLASSES = [
     InspectVideoStage, ExtractFramesStage, FilterFramesStage, GenerateMasksStage,
-    RunColmapStage, ValidateColmapStage, NormalizeSceneStage, SplitDatasetStage,
+    RunColmapStage, ValidateColmapStage, NormalizeSceneStage, ObjectMasksStage,
+    SplitDatasetStage,
     TrainStage, EvaluateStage, ExportStage, VisualizeStage,
 ]
 STAGE_BY_NAME = {c.name: c for c in STAGE_CLASSES}
@@ -54,6 +56,7 @@ COMMAND_TO_STAGE = {
     "reconstruct": "run_colmap",
     "validate-reconstruction": "validate_colmap",
     "normalize": "normalize_scene",
+    "object-masks": "object_masks",
     "split": "split_dataset",
     "train": "train",
     "evaluate": "evaluate",
