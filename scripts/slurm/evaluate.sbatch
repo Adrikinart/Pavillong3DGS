@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=v2gs-eval
 #SBATCH --partition=rtxpro
-#SBATCH --nodelist=GPURACK5
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=02:00:00
 #SBATCH --output=experiments/slurm_logs/%x_%j.out
 #SBATCH --error=experiments/slurm_logs/%x_%j.err
+# Deliberately NO default --nodelist: it used to pin GPURACK5, which went DOWN on
+# 2026-07-16, so jobs queued forever against a dead node while others sat free.
+# Pin explicitly (--nodelist=GPURACK2) only when you need a specific node.
 # ---------------------------------------------------------------------------
 # Evaluate + export + report for an already-trained run.
 # Usage:  sbatch scripts/slurm/evaluate.sbatch <config> [train_run_id]

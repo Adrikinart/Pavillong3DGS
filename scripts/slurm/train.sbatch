@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=v2gs-train
 #SBATCH --partition=rtxpro
-#SBATCH --nodelist=GPURACK5
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --time=24:00:00
@@ -12,7 +11,15 @@
 # ---------------------------------------------------------------------------
 # Train (+ evaluate + export + report) a 3DGS reconstruction.
 # Usage:  sbatch scripts/slurm/train.sbatch configs/pipeline/pavillon/scene_pavillon.yaml
-# Override node/partition:  sbatch --partition=rtx50 --nodelist=GPURACK4 ... <config>
+# Pin a node if you need one:  sbatch --nodelist=GPURACK2 ... <config>
+#
+# Deliberately NO default --nodelist. This used to pin GPURACK5, which went DOWN on
+# 2026-07-16; every job submitted without an explicit override then queued forever against
+# a dead node while other nodes in the partition sat free, and Slurm reports that only as
+# "ReqNodeNotAvail" -- easy to read as ordinary queueing. The partition is the right level
+# of constraint: rtxpro holds the only GPUs whose driver satisfies our cu130 torch build
+# (the rtx30/rtx40/rtx50 nodes expose CUDA 12.8 and fail with "driver too old"), so letting
+# the scheduler choose within it is both safe and self-healing when a node returns.
 # ---------------------------------------------------------------------------
 set -uo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
