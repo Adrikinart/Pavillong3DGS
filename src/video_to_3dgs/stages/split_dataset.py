@@ -47,8 +47,22 @@ class SplitDatasetStage(Stage):
             val_idx = set(perm[n_test:n_test + n_val].tolist())
         elif c.strategy == "periodic":
             k = max(2, c.holdout_every)
-            test_idx = set(range(0, n, k))
-            val_idx = set(range(k // 2, n, k)) - test_idx
+            # Key the period off the FRAME NUMBER, not the position in the registered list.
+            # Positional selection is not reproducible across datasets: two reconstructions
+            # of the same footage that register a different number of images (134 vs 130 on
+            # the Casque) shift every subsequent slot, so their held-out sets end up sharing
+            # almost no views and cannot be compared. Keying off the name makes the same
+            # frames held out wherever they survive registration, which is what makes a
+            # cross-dataset comparison (e.g. 2560 px vs native 4K) possible at all.
+            import re as _re
+            nums = [_re.findall(r"(\d+)", names[i]) for i in range(n)]
+            if all(x for x in nums):
+                fno = [int(x[-1]) for x in nums]
+                test_idx = {i for i in range(n) if fno[i] % k == 0}
+                val_idx = {i for i in range(n) if fno[i] % k == k // 2} - test_idx
+            else:                       # names carry no frame number: fall back to position
+                test_idx = set(range(0, n, k))
+                val_idx = set(range(k // 2, n, k)) - test_idx
         else:  # pose_aware: spread holdouts evenly around the orbit (by azimuth)
             center = np.median(centers, axis=0)
             rel = centers - center
