@@ -215,6 +215,21 @@ not by hand. On this capture it writes 134 masks at 28.6 % median coverage and w
 3 views project empty — those are the tangential close-ups where the subject centre falls
 outside the frame, and they contribute nothing to the loss.
 
+### Deliverable model vs. beauty-render model
+
+Two different models are "best" depending on what you want, and it is worth stating which:
+
+- **`casque_helmet.yaml` (masked loss)** is the deliverable: 341 k Gaussians, 81 MB, and
+  statistically the same subject quality as any larger model. Use it for the `.ply` and for
+  measurement.
+- **`casque.yaml` (full scene)** produces the cleaner turntable *video*. The masked model
+  never learned the background, so the Gaussians surrounding the helmet are unconstrained
+  and the orbit crop cannot fully remove them; the full-scene model constrains the
+  surroundings, so cropping it at render time isolates a clean helmet. Same subject, cleaner
+  beauty render.
+
+In short: mask for the file, full-scene for the flythrough.
+
 ### Where the remaining error is
 
 <p align="center">
