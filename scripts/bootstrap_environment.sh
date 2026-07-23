@@ -76,9 +76,19 @@ log "python: $($PY --version 2>&1)"
 # we have no local GPU. Single source of truth for the pip package set:
 V2GS_PIP_PKGS="${V2GS_PIP_PKGS:-torch torchvision gsplat lpips rembg pillow-heif imageio imageio-ffmpeg}"
 V2GS_GPU_PARTITION="${V2GS_GPU_PARTITION:-rtxpro}"
-V2GS_GPU_NODE="${V2GS_GPU_NODE:-GPURACK5}"
+# Empty by default ON PURPOSE: let the scheduler pick within the partition. This used to
+# default to GPURACK5, which went DOWN on 2026-07-16, and a pinned dead node makes the pip
+# layer queue forever with no output rather than failing.
+V2GS_GPU_NODE="${V2GS_GPU_NODE:-}"
 # cu128 as the PRIMARY index so torch resolves to the cu128 build that MATCHES
 # the in-env nvcc 12.8 (a cu130 torch + nvcc 12.8 mismatch breaks the gsplat build).
+#
+# WARNING, learned the hard way: --index-url + --extra-index-url does NOT mean "prefer the
+# first". pip pools both and takes the highest VERSION, so an unpinned `torch` resolves to
+# whatever PyPI carries -- which is how this env ended up on torch 2.13.0+cu130 despite the
+# cu128 index below. That build needs a CUDA 13.0 driver, which only GPURACK2/5 have, so it
+# silently cost us the rtx30/rtx40/rtx50 nodes. Pin the build when you need cu128:
+#   V2GS_PIP_PKGS="torch==2.11.0+cu128 gsplat lpips imageio imageio-ffmpeg"
 CU_INDEX="https://download.pytorch.org/whl/cu128"
 
 pip_layer_cmd="source '$REPO_ROOT/scripts/_activate_env.sh'; \
@@ -88,9 +98,11 @@ if command -v nvidia-smi >/dev/null 2>&1; then
     log "local GPU detected -> installing pip layer locally"
     bash -lc "$pip_layer_cmd" 2>&1 | tee -a "$LOG"
 elif command -v srun >/dev/null 2>&1; then
-    log "no local GPU + Slurm present -> installing pip layer on $V2GS_GPU_NODE ($V2GS_GPU_PARTITION)"
+    log "no local GPU + Slurm present -> installing pip layer on ${V2GS_GPU_NODE:-any node} ($V2GS_GPU_PARTITION)"
     log "(this avoids the login-node NFS storm; gsplat builds for sm_120 on the GPU node)"
-    srun --partition="$V2GS_GPU_PARTITION" --nodelist="$V2GS_GPU_NODE" --gres=gpu:1 \
+    _nodearg=()
+    [[ -n "$V2GS_GPU_NODE" ]] && _nodearg=(--nodelist="$V2GS_GPU_NODE")
+    srun --partition="$V2GS_GPU_PARTITION" "${_nodearg[@]}" --gres=gpu:1 \
          --time=01:00:00 --cpus-per-task=8 bash -lc "$pip_layer_cmd" 2>&1 | tee -a "$LOG"
 else
     log "WARNING: no GPU and no Slurm -> installing pip layer locally (may be very slow on NFS)"
@@ -129,7 +141,7 @@ except Exception as e:
 PYEOF
 
 log "DONE. Validate on a GPU node with:"
-log "  srun --partition=rtxpro --nodelist=GPURACK5 --gres=gpu:1 --time=00:15:00 \\"
+log "  srun --partition=$V2GS_GPU_PARTITION --gres=gpu:1 --time=00:15:00 \\"
 log "    $PY -m video_to_3dgs.cli inspect-env --gpu-check --out experiments/env_gpurack5.json"
 log "bootstrap log saved to $LOG"
 echo "BOOTSTRAP_EXIT_OK" | tee -a "$LOG"
