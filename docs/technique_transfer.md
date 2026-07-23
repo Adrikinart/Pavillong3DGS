@@ -21,6 +21,7 @@ does not help · ⏭️ deliberately skipped.
 | **Appearance embeddings** | unlocks multi-clip (+3 dB) | Multi-clip only | ✅ multi-clip · ❌ single-clip tie (−0.09 dB, CI [−0.60, +0.41]) |
 | Bilateral-grid appearance | tie (no spatial variation) | Possible (pro/iPhone vignetting) | ⏭️ low priority |
 | **Pose optimization** | −1 dB (poses already 0.9 px) | Hypothesis falsified — hurts again | ❌ −0.54 dB, CI [−0.71, −0.36] |
+| Specular head (reflection SH) | n/a | chrome is worst class (−1.9 dB) | ❌ tie overall, chrome slightly worse |
 | **2DGS** surface backend | FAILED, 13 dB (single-sided) | **Works** — a real orbit supplies the normals | ✅ parity w/ 3DGS, `dist_lambda=0` |
 | Object box (attract to subject) | n/a | tested | ❌ no sharper helmet + smearing (data-limited) |
 | Generative diffusion prior | worse at every strength | Same regime, and helmet is data-limited | ⏭️ skip |
@@ -146,6 +147,52 @@ safe to assume and are being measured rather than copied:
    views. Pose refinement is now a negative on *both* captures, and the "poses were
    already too good" explanation does not survive — a better hypothesis is that our
    SE(3) refinement trades multi-view consistency for per-view photometric fit.
+
+## Specular head: implemented, and it does not help here
+
+The chrome dome is measurably the worst material class on the helmet (22.3 dB against gold's
+24.2), so a reflection-direction specular head was implemented: a second low-order SH bank
+per Gaussian evaluated at `r = v − 2(v·n)n` instead of the view direction. That is Ref-NeRF's
+reformulation, as carried into splatting by GaussianShader and Ref-Gaussian, in the smallest
+form that needs no CUDA changes.
+
+**Result: a tie overall, and slightly worse on the chrome it targets.**
+
+| | SH only | + specular head |
+|---|---|---|
+| test PSNR | 22.79 | 23.17 (+0.38 dB, CI [−0.24, +1.00] — tie) |
+| SSIM | 0.7583 | 0.7496 |
+| **chrome class** | **22.34** | **22.12** |
+
+Two candidate explanations, one weak and one strong:
+
+- *Ill-defined normals.* The head reflects about each Gaussian's axis of least variance, and
+  for a near-isotropic Gaussian that axis is arbitrary. Measured: **21.9 %** of Gaussians
+  have their smallest axis within 20 % of their middle axis. Real, but 78 % are well-defined,
+  so this cannot be the whole story.
+- **We masked away what the chrome reflects.** The helmet config restricts the loss to the
+  subject, so the model never learns the auditorium — and a mirror-like surface is
+  reflecting *precisely that* removed environment. A reflection-direction head then has
+  nothing coherent to point at. This is being tested on the unmasked model, which does
+  contain the room.
+
+If that second explanation holds, it is a genuinely awkward interaction rather than a bug:
+**the masking that makes the helmet 30× cheaper also deletes the information a specular
+model needs.** The two techniques we most wanted are in tension, and no amount of tuning
+either one resolves it.
+
+### A wiring bug that nearly became a false conclusion
+
+The head first measured **−3.66 dB** and looked like a clear failure. It was not: `evaluate`
+rebuilds parameters with `create_splats`, which does not allocate the specular bank, so
+loading the checkpoint silently dropped it and scored a model rendering its diffuse half
+alone. The giveaway was that *validation* — computed inside the trainer, where the head is
+applied — showed a **tie** while test showed −3.66 dB. Two held-out splits do not disagree
+by 3.5 dB unless they are being measured differently.
+
+This is the second time an inference path silently diverged from training in this project
+(the first cost 3.02 dB on the appearance model). Both were invisible in the aggregate and
+both were caught by a metric that disagreed with another metric.
 
 ## Appearance embeddings are a *merge* tool, not a general one
 
