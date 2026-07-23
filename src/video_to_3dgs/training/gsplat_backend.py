@@ -92,8 +92,25 @@ class GsplatBackend(TrainingBackend):
                                  downscale=cfg.image_downscale)
         val_ds = ColmapDataset(layout, "val", use_masks=cfg.use_masks,
                                downscale=cfg.image_downscale)
-        log.info("train views=%d val views=%d points=%d", len(train_ds), len(val_ds),
-                 len(train_ds.points))
+        # A second, subject-only view of the SAME validation split, used for reporting and
+        # for model selection when masks exist but training is unmasked.
+        #
+        # Why: on an object filmed inside a room, whole-frame validation is dominated by
+        # the background. Measured on the Casque, the whole-frame curve declines from 16.56
+        # to 15.90 dB between iterations 10k and 25k while the helmet rises monotonically
+        # 22.83 -> 23.54 over the same span. Reading the whole-frame number, training looks
+        # like it is degrading when the deliverable is steadily improving -- and best_val /
+        # early stopping both read that number, so a patience of 3 would have killed a
+        # healthy run. See docs/reproduce_casque.md.
+        val_obj_ds = None
+        if not cfg.use_masks and layout.masks_dir.exists():
+            cand = ColmapDataset(layout, "val", use_masks=True,
+                                 downscale=cfg.image_downscale)
+            if any(s.mask_path is not None for s in cand.samples):
+                val_obj_ds = cand
+        log.info("train views=%d val views=%d points=%d%s", len(train_ds), len(val_ds),
+                 len(train_ds.points),
+                 " (+subject-only validation)" if val_obj_ds is not None else "")
         scene_scale = train_ds.scene_extent()
 
         # normalization near/far
@@ -420,28 +437,51 @@ class GsplatBackend(TrainingBackend):
 
             # validation
             if val_ds and (step % cfg.validation_interval == 0 and step > 0 or step == max_iters - 1):
-                def _val_render(i, _step=step):
-                    r = self._rasterize(gsplat, params, *val_ds.camera_tensors(i, device),
-                                        min(cfg.sh_degree, _step // 1000), near, far)[0][0]
-                    if app_model is None:
-                        return r
-                    # score under the mean appearance of the view's OWN source clip
-                    # (clip identity + that clip's TRAINING images only — the
-                    # held-out pixels are never used, so nothing leaks). Averaging
-                    # across clips penalises every view once the clips differ.
-                    return app_model.canonical_for(
-                        r, clip_to_train_idx.get(clip_key(val_ds.samples[i].name)))
+                # Bind the dataset explicitly rather than closing over val_ds: the same
+                # renderer is reused for the subject-only pass, and although both datasets
+                # are the same split in the same order, an implicit capture would silently
+                # render the wrong camera if that ever stopped being true.
+                def _make_val_render(ds, _step=step):
+                    def _render(i):
+                        r = self._rasterize(gsplat, params, *ds.camera_tensors(i, device),
+                                            min(cfg.sh_degree, _step // 1000),
+                                            near, far)[0][0]
+                        if app_model is None:
+                            return r
+                        # score under the mean appearance of the view's OWN source clip
+                        # (clip identity + that clip's TRAINING images only — the
+                        # held-out pixels are never used, so nothing leaks). Averaging
+                        # across clips penalises every view once the clips differ.
+                        return app_model.canonical_for(
+                            r, clip_to_train_idx.get(clip_key(ds.samples[i].name)))
+                    return _render
+
+                _val_render = _make_val_render(val_ds)
 
                 vres = evaluate_split(
                     _val_render,
                     val_ds, device, out_dir=renders_dir / f"val_{step:07d}",
                     compute_lpips=False, masked=cfg.use_masks, max_images=cfg.val_render_count)
-                metrics.log(step, {"psnr": vres["psnr"], "ssim": vres["ssim"]}, kind="val")
-                log.info("step %d val: psnr=%s ssim=%s n_gauss=%d", step, vres["psnr"],
-                         vres["ssim"], n_gauss)
-                if best_val["psnr"] is None or (vres["psnr"] or 0) > best_val["psnr"]:
-                    best_val = {"psnr": vres["psnr"], "step": step}
-                if health.check_improvement(vres["psnr"] or 0.0, step):
+                entry = {"psnr": vres["psnr"], "ssim": vres["ssim"]}
+                # Selection metric: prefer the subject when we can measure it, because that
+                # is the deliverable. Whole-frame stays logged so the difference is visible.
+                sel_psnr, sel_what = vres["psnr"], "val"
+                if val_obj_ds is not None:
+                    ores = evaluate_split(
+                        _make_val_render(val_obj_ds), val_obj_ds, device, out_dir=None,
+                        compute_lpips=False, masked=True,
+                        max_images=cfg.val_render_count)
+                    entry["psnr_object"] = ores["psnr"]
+                    entry["ssim_object"] = ores["ssim"]
+                    sel_psnr, sel_what = ores["psnr"], "val[subject]"
+                metrics.log(step, entry, kind="val")
+                log.info("step %d val: psnr=%s ssim=%s%s n_gauss=%d", step, vres["psnr"],
+                         vres["ssim"],
+                         f" | subject psnr={entry['psnr_object']} ssim={entry['ssim_object']}"
+                         if "psnr_object" in entry else "", n_gauss)
+                if best_val["psnr"] is None or (sel_psnr or 0) > best_val["psnr"]:
+                    best_val = {"psnr": sel_psnr, "step": step, "metric": sel_what}
+                if health.check_improvement(sel_psnr or 0.0, step):
                     log.info("early stopping at step %d (no improvement)", step)
                     save_checkpoint(ckpt_dir, params, optimizers, step, _ckpt_extra({"early_stop": True}))
                     break

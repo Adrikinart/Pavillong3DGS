@@ -331,3 +331,50 @@ appearance embeddings all applied without modification and behaved as on the Pav
 explicit object box remains a negative on both: concentrating the budget on the helmet
 produced no sharper helmet and added boundary smearing, because the helmet is
 data-limited rather than budget-limited.
+
+\paragraph{What the Gaussian budget is actually sizing.}
+The 16$\times$ gap between the two captures' optima (375\,k versus 6\,M) invites the reading
+that parallax sets the budget. It does not. Re-running the identical pipeline with the
+photometric loss restricted to the helmet --- same poses, same split, masks applied only to
+the loss --- flattens the capacity curve completely:
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{lrrrrr}
+\toprule
+\texttt{cap\_max} & 190\,k & 375\,k & 750\,k & 1.5\,M & 6\,M \\
+\midrule
+test PSNR (loss masked to the subject) & 22.81 & 23.10 & 23.03 & 22.96 & 23.06 \\
+\bottomrule
+\end{tabular}
+\caption{Every adjacent pair is a statistical tie (widest paired delta $+0.29$\,dB, 95\,\%
+CI $[-0.13, +0.72]$), across a 32$\times$ range. The same pipeline scoring the whole frame
+gains significantly at \emph{every} doubling up to 6\,M.}
+\label{tab:masked}
+\end{table}
+
+So the transferable statement is not that capacity inverts between captures, but that
+\textbf{the budget is set by how much observed scene the loss must reproduce}: one wall
+$\rightarrow$ 375\,k, an auditorium seen across 310$^\circ$ $\rightarrow$ 6\,M, the helmet
+alone $\rightarrow$ $\leq$190\,k --- below the Pavillon's optimum, on the capture with far
+\emph{more} parallax. For an object deliverable, masking the loss yields a 30$\times$
+smaller model (190\,k versus 5.3\,M primitives, ${\approx}$50\,MB versus 3.8\,GB) at no
+measurable cost. Absolute PSNR in Table~\ref{tab:masked} is not comparable to the unmasked
+figures, since the pixel population differs; only the shape of the curve is.
+
+\paragraph{Validation must be measured on the subject.}
+The same asymmetry corrupts model selection. Casque validation PSNR peaks near iteration
+7000, declines for 20\,000 steps, then jumps 4.4\,dB at the final iteration --- while the
+helmet region rises monotonically throughout (22.20 $\rightarrow$ 24.71\,dB). The decline
+belongs entirely to the background, which stays unsettled until the MCMC noise scale decays;
+the stored renders show the subject stable from early on while the room flips between dark
+and correct. Because \texttt{best\_val} and the early-stopping check both read the
+whole-frame number, a patience of three would have terminated a healthy run near iteration
+10\,000. The trainer now scores a subject-only pass whenever masks are available and selects
+on it, logging both metrics so the discrepancy remains visible.
+
+Two plausible explanations were eliminated by measurement before this one was found: the
+periodic floater opacity-suppression firing in the same iteration as validation (the rule
+suppresses zero Gaussians on this model), and accumulated near-transparent Gaussians fogging
+the render (pruning everything below 0.005 opacity mid-training moves PSNR by 0.00\,dB).
+Both were plausible, and both were wrong; the rendered images settled it.

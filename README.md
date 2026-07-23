@@ -432,6 +432,39 @@ camera ring's own normal), and the box centre is best derived from the orbit geo
 rather than guessed — every camera looks at the helmet, so the least-squares meeting
 point of the optical axes *is* the object centre.
 
+### Validate on the subject, not the frame
+
+<p align="center">
+  <img src="docs/assets/casque/object_vs_scene_val.png" width="760"
+       alt="Whole-frame vs subject-only validation"><br>
+  <em>Same checkpoints, two measurements. Regenerate with
+  <code>python scripts/object_vs_scene_val.py casque_orbit_07ccd886 casque_gsplat</code>.</em>
+</p>
+
+The Casque training curves look alarming: validation PSNR peaks near iteration 7000,
+declines for 20 000 steps, then jumps ~4.4 dB at the end. **Nothing is wrong.** Scoring the
+same checkpoints on the helmet alone rises monotonically throughout:
+
+| step | 5 000 | 10 000 | 15 000 | 20 000 | 25 000 | 29 999 |
+|---|---|---|---|---|---|---|
+| whole frame | 16.23 | 16.56 | 16.43 | 16.06 | 15.90 | **20.42** |
+| **helmet only** | 22.20 | 22.83 | 23.09 | 23.30 | 23.54 | **24.71** |
+
+The decline belongs to the room, which stays unsettled until the MCMC noise scale decays at
+the end of the schedule; the saved renders show the helmet stable from early on while the
+background flips between dark and correct.
+
+This is not cosmetic. `best_val` and `early_stop_patience` both read the whole-frame number
+— early stopping is off by default, but a patience of 3 would have killed this healthy run
+around iteration 10 000. **The trainer now scores a subject-only pass whenever masks exist
+and selects on it**, logging both so the gap stays visible (`psnr` and `psnr_object` in
+`metrics.jsonl`).
+
+Two plausible mechanisms were checked and ruled out first, by measurement rather than
+argument: the floater opacity-kill firing in the same iteration as validation (it kills
+0 Gaussians here), and near-dead Gaussians fogging the render (pruning opacity < 0.005
+mid-training moves PSNR by 0.00 dB).
+
 ### Novel-view paths are chosen from measured rig geometry
 
 The Casque's first turntable was unusable — the subject was a few pixels wide in a black
