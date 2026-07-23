@@ -378,3 +378,26 @@ periodic floater opacity-suppression firing in the same iteration as validation 
 suppresses zero Gaussians on this model), and accumulated near-transparent Gaussians fogging
 the render (pruning everything below 0.005 opacity mid-training moves PSNR by 0.00\,dB).
 Both were plausible, and both were wrong; the rendered images settled it.
+
+\paragraph{The subject is data-limited, not model-limited.}
+Every model trained on this capture was finally scored on the \emph{same} pixels --- the
+helmet region --- rather than on whatever each was trained to reproduce. That comparison,
+which none of the preceding sections makes, is flat: unmasked models at 1.5\,M, 3\,M, 6\,M
+and 12\,M score 22.72, 22.67, 22.66 and 22.65\,dB on the subject, masked models at 190\,k and
+375\,k score 22.65 and 22.44, and the specular variant 22.66. Every paired comparison is a
+tie. Across a 63$\times$ capacity range, with and without loss masking, with and without a
+reflection-direction appearance head, subject quality does not move.
+
+This single observation explains the preceding negatives rather than adding to them: the
+masked capacity curve is flat, the specular head is a null, and 12\,M primitives buy nothing
+because the binding constraint is the data, not the model. The levers that remain are
+therefore data-side --- capture resolution (the source is 3840\,px while every run above
+trained at 2560) and coverage (three further clips of the same subject were never used).
+
+The measurement itself required care that earlier comparisons lacked. Each dataset generates
+its own subject masks, so scoring two models through their own masks compares them through
+two different apertures: the same 4K-versus-2560 pair reads as $-0.89$\,dB and
+``significant'' that way, and $+0.40$\,dB and a tie through a single shared mask. PSNR is
+also not resolution-invariant, since a larger render carries more high-frequency content to
+get wrong, so cross-resolution comparisons must be resampled to a common width before
+scoring. Both are enforced by \texttt{scripts/subject\_quality.py}.

@@ -471,6 +471,38 @@ camera ring's own normal), and the box centre is best derived from the orbit geo
 rather than guessed — every camera looks at the helmet, so the least-squares meeting
 point of the optical axes *is* the object centre.
 
+### The subject is data-limited, not model-limited
+
+Every comparison in this project until now asked "which model is cheaper" or "which scores
+better on the pixels it happened to be trained on". Neither answers the question that matters
+when the object *is* the deliverable. Scoring **every** model on the **same pixels** — the
+helmet — gives one flat answer:
+
+| model | subject PSNR | | model | subject PSNR |
+|---|---|---|---|---|
+| unmasked 1.5 M | 22.72 | | masked 190 k | 22.65 |
+| unmasked 6 M | 22.66 | | masked + specular head | 22.66 |
+| unmasked 12 M | 22.65 | | masked 375 k | 22.44 |
+
+**Every paired comparison is a tie.** Across a **63× capacity range**, masked and unmasked,
+with and without a specular head, the helmet sits at ~22.7 dB. It is **data-limited**, and
+that single fact retrospectively explains the rest of this case study: why the masked
+capacity curve is flat, why the specular head is a null, why 12 M buys nothing. Every
+modelling knob is saturated.
+
+Which means the remaining levers are **data-side** — resolution (the source is 3840 px and
+we were training at 2560) and coverage (three further clips of the same helmet went unused).
+Reproduce the ranking with:
+
+```bash
+python scripts/subject_quality.py casque_orbit_07ccd886 RUN_A RUN_B \
+       --masks-from casque_orbit_07ccd886 --width 1419 --erode 30
+```
+
+`--masks-from` is not optional for a cross-dataset comparison: each dataset generates its
+own masks, and scoring two models through two different apertures made the same pair read as
+"0.89 dB worse, significant" one way and "0.40 dB better, tie" the other.
+
 ### Validate on the subject, not the frame
 
 <p align="center">
