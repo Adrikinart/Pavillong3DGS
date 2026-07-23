@@ -36,11 +36,21 @@ elif command -v mamba >/dev/null 2>&1; then
     MAMBA_BIN="$(command -v mamba)"
 elif [[ -x "${MAMBA_ROOT}/bin/conda" ]]; then
     MAMBA_BIN="${MAMBA_ROOT}/bin/conda"
+elif [[ -x "${MAMBA_ROOT}/condabin/conda" ]]; then
+    MAMBA_BIN="${MAMBA_ROOT}/condabin/conda"
+elif command -v conda >/dev/null 2>&1; then
+    # Last resort, and worth having: the default MAMBA_ROOT lives under /var/tmp, which is
+    # node-local and periodically cleaned, so the miniforge install this script was written
+    # against can simply vanish. A conda anywhere on PATH is slower to solve but correct,
+    # and /home conda works again since the 2026-07-15 NFS fix.
+    MAMBA_BIN="$(command -v conda)"
 fi
 if [[ -z "$MAMBA_BIN" ]]; then
-    log "ERROR: no mamba/conda found. Set V2GS_MAMBA_ROOT to a miniforge install."
+    log "ERROR: no mamba/conda found. Set V2GS_MAMBA_ROOT to a miniforge/miniconda install."
+    log "  looked in: ${MAMBA_ROOT}/{bin,condabin}/{mamba,conda} and \$PATH"
     exit 2
 fi
+log "using solver: $MAMBA_BIN"
 log "using solver: $MAMBA_BIN"
 
 # --- create or update the env --------------------------------------------------
