@@ -157,6 +157,38 @@ python scripts/make_demo_assets.py casque_orbit_07ccd886 --train-run casque_gspl
        --gif-width 520 --gif-fps 10
 ```
 
+## Reading the training curves (they look wrong, and are not)
+
+<p align="center">
+  <img src="assets/casque/object_vs_scene_val.png" width="760"
+       alt="Whole-frame vs subject-only validation"><br>
+  <em>Same checkpoints, two measurements. Regenerate with
+  <code>python scripts/object_vs_scene_val.py casque_orbit_07ccd886 casque_gsplat</code>.</em>
+</p>
+
+Validation PSNR peaks near iteration 7000, declines for the next 20 000 steps, then jumps
+~4.4 dB at the final iteration. Nothing is wrong. Scoring the same checkpoints on the
+helmet alone rises monotonically throughout (22.20 → 24.71 dB): **the decline belongs to
+the room**, which stays unsettled until the MCMC noise scale decays at the end of the
+schedule. The renders show it directly — the helmet is stable from early on while the
+background flips between dark and correct.
+
+Consequences worth knowing before you trust a curve:
+
+- **`best_val` and `early_stop_patience` read the whole-frame number.** Early stopping is
+  off by default; enabling it with a patience of 3 or more would have killed this healthy
+  run around iteration 10 000.
+- For an object capture the whole-frame metric mostly describes the background — the part
+  nobody looks at. Judge with masked validation (`scripts/make_box_masks.py` produces the
+  masks; they are needed only for *measurement*, not for training).
+- The subject is at 22.8 dB by iteration 10 000 and gains ~1.9 dB over the remaining
+  20 000. Where you stop depends entirely on which curve you read.
+
+Two mechanisms we checked and **ruled out** before finding this, both plausible and both
+wrong: the periodic floater opacity-kill firing in the same iteration as validation (it
+kills 0 Gaussians here), and near-dead Gaussians fogging the render (pruning opacity
+< 0.005 mid-training changes PSNR by 0.00 dB).
+
 ## What to watch for
 
 - **Appearance drift** (logged): if the pro/iPhone response differs a lot, the affine
