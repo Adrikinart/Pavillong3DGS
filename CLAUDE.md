@@ -8,13 +8,30 @@ on the Slurm GPU cluster. Start at [README.md](README.md) and
 [docs/pipeline_architecture.md](docs/pipeline_architecture.md).
 
 Project-specific guidance for agents:
-- **GPU env is `v2gs`** at `/home/$USER/envs/v2gs` (torch **cu128/cu130** exposing
-  Blackwell sm_120, gsplat, colmap 3.13). Build/refresh with
-  `scripts/bootstrap_environment.sh`; it installs the heavy pip layer (torch/gsplat)
-  via `srun` on a GPU node so the gsplat CUDA extension builds where `nvcc`+GPU are.
-  Always `source scripts/_activate_env.sh` before GPU work (sets CUDA_HOME/CPATH so
-  gsplat can JIT-build, and puts the env's `colmap` on PATH). Do not put torch/gsplat
-  in `pyproject.toml`; they are provisioned by the env only.
+- **Two GPU envs, and which one you pick decides which nodes you can use** (verified
+  2026-07-23). Build/refresh either with `scripts/bootstrap_environment.sh`; it installs
+  the heavy pip layer via `srun` on a GPU node so the gsplat CUDA extension builds where
+  `nvcc`+GPU are. Always `source scripts/_activate_env.sh` before GPU work (sets
+  CUDA_HOME/CPATH so gsplat can JIT-build, and puts the env's `colmap` on PATH); it
+  honours `V2GS_ENV_PREFIX`. Do not put torch/gsplat in `pyproject.toml`.
+
+  | env | torch | runs on | VRAM |
+  |---|---|---|---|
+  | `~/envs/v2gs` (default) | 2.13.0+**cu130** | **GPURACK2** only (GPURACK5 is down) | 32 GB |
+  | `~/envs/v2gs-cu128` | 2.11.0+**cu128** | **GPURACK4** (rtx50), and the rtx30/rtx40 nodes | 16.6 GB |
+
+  ```bash
+  sbatch --partition=rtx50 --export=ALL,V2GS_ENV_PREFIX=/home/$USER/envs/v2gs-cu128 ...
+  ```
+  Why two: cu130 needs a CUDA 13.0 driver, which only the rtxpro nodes have. Every other
+  node reports driver 570.x / **CUDA 12.8** and fails with *"The NVIDIA driver on your
+  system is too old (found version 12080)"* — `nvidia-smi` looks modern there, so probe
+  with torch, don't infer. Both envs compile for `sm_120`; gsplat JIT-builds on the 5080
+  in ~86 s. Keep a sweep **within one env** — torch 2.11 vs 2.13 is not a controlled
+  comparison. Locks: `requirements-lock.txt` (cu130) and `requirements-lock-cu128.txt`.
+  **Pin the torch build when you want cu128** (`torch==2.11.0+cu128`): `--index-url` plus
+  `--extra-index-url` does not mean "prefer the first", pip takes the highest *version*
+  across both, which is how the default env silently became cu130 and lost three nodes.
 - **CPU-only work** (login node): the package imports without torch (GPU imports
   are lazy). A quick CPU test env can be made with pydantic/pyyaml/numpy/pillow/
   opencv/pytest; run `pytest tests/unit tests/integration`.
@@ -24,7 +41,12 @@ Project-specific guidance for agents:
   [state/decisions.md](state/decisions.md) before changing backends.
 - **Never `git add -A`** (NFS rule below); `experiments/runs/`, checkpoints,
   frames, COLMAP DBs, and `*.MOV` are gitignored — stage explicit source paths.
-- Preferred smoke/heavy GPU node: **GPURACK5** (RTX PRO 6000, ~96 GB, idle).
+- **GPURACK5 has been DOWN/NOT_RESPONDING since 2026-07-16** — do not target it. It was
+  the default `--nodelist` in every sbatch script and in `bootstrap_environment.sh`, so
+  jobs queued forever against a dead node while other GPUs sat free; Slurm reports that
+  only as `ReqNodeNotAvail`, which reads like ordinary queueing. Those defaults are now
+  removed: submit with a `--partition` and let the scheduler choose, pinning `--nodelist`
+  only when you mean it. Reviving GPURACK5 needs an admin.
 
 ## Environment note (isiacluster)
 
