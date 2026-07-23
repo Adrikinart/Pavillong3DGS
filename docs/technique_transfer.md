@@ -94,6 +94,24 @@ safe to assume and are being measured rather than copied:
    **30×** smaller model at no measurable cost — 190 k versus 5.3 M Gaussians, ~50 MB
    versus 3.8 GB.
 
+   **A second, independent test of the same claim.** If capacity really tracks *how much
+   observed scene the loss must reproduce*, then enlarging the masked region should make
+   capacity matter again. Masking helmet **plus its checkerboard base** (a box of half-extent
+   0.35 instead of the helmet mesh):
+
+   | masked region | 375 k → 1.5 M |
+   |---|---|
+   | helmet only | tie (and every other step, 190 k–6 M) |
+   | **helmet + board** | **+1.97 dB, CI [+1.29, +2.65], 13/13 views** |
+
+   Capacity goes from irrelevant to strongly significant purely by widening the mask. The
+   checkerboard is a high-frequency textured plane, so it is exactly the kind of content that
+   consumes primitives. The prediction was made before the measurement and could have failed;
+   it did not.
+
+   (The two rows are separate pixel populations, so their absolute PSNRs are not comparable
+   — only the presence or absence of a capacity effect within each row is.)
+
    The methodological rule survives its own correction: **sweep capacity per capture, read
    the paired CI rather than the mean — and settle the rest of the configuration first**,
    or the sweep measures the confound instead of the capacity.

@@ -373,6 +373,18 @@ Practically: if you only want the object, masking the loss buys a **30× smaller
 measurable cost** (190 k vs 5.3 M Gaussians; ~50 MB vs 3.8 GB). (Masked PSNR is not
 comparable in absolute terms to unmasked — different pixel population; only the shape is.)
 
+**The claim was then tested in the opposite direction.** If capacity tracks how much scene
+the loss must reproduce, *widening* the mask should bring the capacity effect back. Masking
+helmet **+ checkerboard base**:
+
+| masked region | 375 k → 1.5 M |
+|---|---|
+| helmet only | tie (as is every step, 190 k–6 M) |
+| **helmet + board** | **+1.97 dB**, CI [+1.29, +2.65], 13/13 views |
+
+Capacity goes from irrelevant to strongly significant purely by enlarging the mask — a
+prediction made before the measurement, which could have failed and did not.
+
 **This corrects an earlier conclusion of ours.** Measured *with* the depth prior, that
 second step read as a tie (+0.41 dB, CI [−0.45, +1.26]) and we reported the curve as
 "rises then plateaus" with 1.5 M as the operating point. The prior's damage grows with
