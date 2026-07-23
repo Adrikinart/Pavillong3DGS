@@ -353,9 +353,25 @@ significant**: 750 k → 1.5 M **+1.41 dB** (12/13), 1.5 M → 3 M **+0.90 dB** 
 the size. Each run really spends its budget (all end at ~88 % of cap, the rest being the
 final opacity prune), so this is a genuine ceiling, not slow saturation.
 
-So the two captures differ by **16×** in optimal budget: **375 k vs 6 M**. The practical
-cost is real — the 6 M model is a 3.8 GB checkpoint against the Pavillon's 90 MB; drop to
-1.5 M (973 MB) if storage matters more than the last 2.2 dB.
+So the two captures differ by **16×** in optimal budget: **375 k vs 6 M** — a 3.8 GB
+checkpoint against the Pavillon's 90 MB.
+
+**But the object is not what needs the capacity.** Re-running the identical pipeline with
+the loss masked to the helmet flattens the curve completely:
+
+| masked `cap_max` | 190 k | 375 k | 750 k | 1.5 M | 6 M |
+|---|---|---|---|---|---|
+| PSNR | 22.81 | 23.10 | 23.03 | 22.96 | 23.06 |
+
+Every step is a tie across a **32× range**, while the same pipeline on the full frame gained
+significantly at every doubling. So the honest statement is not "capacity inverts between
+captures" but **the Gaussian budget is set by how much observed scene the loss must
+reproduce**: one wall → 375 k, an auditorium → 6 M, the helmet alone → **≤190 k** — below
+the Pavillon's optimum, despite this being the higher-parallax capture.
+
+Practically: if you only want the object, masking the loss buys a **30× smaller model at no
+measurable cost** (190 k vs 5.3 M Gaussians; ~50 MB vs 3.8 GB). (Masked PSNR is not
+comparable in absolute terms to unmasked — different pixel population; only the shape is.)
 
 **This corrects an earlier conclusion of ours.** Measured *with* the depth prior, that
 second step read as a tie (+0.41 dB, CI [−0.45, +1.26]) and we reported the curve as

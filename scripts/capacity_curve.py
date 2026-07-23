@@ -65,6 +65,16 @@ SERIES = {
                  "casque_nodepth_cap12m"],
         "label": "Casque orbit — no depth prior (recommended)",
     },
+    # The control that explains the other two curves. Identical pipeline, but the loss is
+    # restricted to the helmet, so the model is no longer asked to reproduce the room.
+    # Absolute PSNR here is NOT comparable to the other series (different pixel population);
+    # only the SHAPE is, and the shape is flat across a 32x range.
+    "casque_masked": {
+        "dataset": "casque_orbit_07ccd886",
+        "runs": ["casque_masked_190k", "casque_masked_375k", "casque_masked_750k",
+                 "casque_masked_1500k", "casque_masked_6m"],
+        "label": "Casque — loss masked to the helmet (level not comparable)",
+    },
 }
 
 T95 = {  # two-sided t critical values, small-n honest rather than assuming z=1.96
@@ -141,7 +151,7 @@ def main() -> int:
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.4))
     colors = {"pavillon": "#1f77b4", "casque": "#f0a3a3",
-              "casque_nodepth": "#d62728"}
+              "casque_nodepth": "#d62728", "casque_masked": "#2ca02c"}
 
     for name, (label, pts) in series.items():
         caps = [p["cap"] / 1e6 for p in pts]

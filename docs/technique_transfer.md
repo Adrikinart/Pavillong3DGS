@@ -64,13 +64,35 @@ safe to assume and are being measured rather than copied:
    primitives means more of them pulled toward the reflection-depths the prior supplies
    (see the depth-prior section below).
 
-   So the two captures differ by **16×** in optimal budget — 375 k versus 6 M —
-   which makes the inversion far starker than first measured. A plausible reading is that
-   the quantity being sized is not "the object" but *the amount of observed scene content*:
-   the Pavillon is one wall seen from one side with little parallax, while this capture is
-   an entire auditorium observed from 310° of azimuth, and the helmet is a small part of
-   what the model must explain. That is a hypothesis, not a result — it predicts that
-   masking to the helmet would collapse the optimum, which we have not tested.
+   So the two captures differ by **16×** in optimal budget — 375 k versus 6 M. **We then
+   tested why, and the answer is not the object.**
+
+   The proposed reading was that capacity sizes *the amount of observed scene content*
+   rather than the subject: the Pavillon is one wall seen from one side, while this is an
+   entire auditorium observed across 310° of azimuth, with the helmet a small part of what
+   the model must explain. That predicted something falsifiable — restrict the loss to the
+   helmet and the optimum should collapse. Same pipeline, same poses, same split, loss
+   masked to the subject:
+
+   | masked `cap_max` | 190 k | 375 k | 750 k | 1.5 M | 6 M |
+   |---|---|---|---|---|---|
+   | test PSNR | 22.81 | 23.10 | 23.03 | 22.96 | 23.06 |
+
+   **Every step is a tie** — 190 k → 375 k → 750 k → 1.5 M → 6 M, no significant difference
+   anywhere across a **32× range** (widest paired delta +0.29 dB, CI [−0.13, +0.72]). The
+   *same* pipeline on the full frame gained significantly at every doubling up to 6 M.
+
+   So the unifying statement is not "capacity inverts between captures" but:
+   **the Gaussian budget is set by how much observed scene the loss must reproduce, not by
+   the subject.** One wall → 375 k. An auditorium → 6 M. The helmet alone → ≤ 190 k, which
+   is *below* the Pavillon's optimum even though this is the higher-parallax capture.
+
+   (Absolute PSNR in the masked table is not comparable to the unmasked numbers — different
+   pixel population. Only the shape is, and the shape is flat.)
+
+   The practical consequence is large: if you only want the object, masking the loss buys a
+   **30×** smaller model at no measurable cost — 190 k versus 5.3 M Gaussians, ~50 MB
+   versus 3.8 GB.
 
    The methodological rule survives its own correction: **sweep capacity per capture, read
    the paired CI rather than the mean — and settle the rest of the configuration first**,
