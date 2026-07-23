@@ -117,7 +117,15 @@ class ObjectMasksStage(Stage):
             mesh_path = ctx.layout.run_dir / mesh_path
         if not mesh_path.exists():
             raise InputValidationError(f"object_masks: mesh not found at {mesh_path}")
-        import open3d as o3d
+        try:
+            import open3d as o3d
+        except ImportError as e:                   # optional dep: only the mesh path needs it
+            raise InputValidationError(
+                "object_masks: source='mesh' needs open3d (pip install open3d). "
+                "For a self-contained alternative that needs no extra dependency and no "
+                "prior reconstruction, use source: box with box_center/box_half_extent -- "
+                "looser (a cube projects to a hexagon larger than the object) but adequate."
+            ) from e
         m = o3d.io.read_triangle_mesh(str(mesh_path))
         pts = np.asarray(m.vertices)
         if len(pts) == 0:
