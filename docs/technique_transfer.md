@@ -12,7 +12,7 @@ does not help · ⏭️ deliberately skipped.
 |---|---|---|---|
 | **GLOMAP** global SfM | 181/193 vs 82 (incremental) | High — 4 clips, two cameras | ✅ 533/536 @ 1.57 px |
 | Scene-scale + LR-decay fixes | PSNR 14 → 24 | Framework-wide | ✅ automatic |
-| **Resolution** (no downscale) | +1.8 dB, tail → 0 | Limited — only 1 of 4 clips is 4K | ➖ 2560 px, capped by 1080p clips |
+| **Resolution** (no downscale) | +1.8 dB, tail → 0 | **INVERTS** — sparse orbit, see rows below | ❌ 2560 optimal; native 4K −0.72 dB |
 | **Anti-floater** (bounds + prune) | 18.2 % → 0 % haze | Yes | ✅ applied |
 | **Depth prior** (DepthAnything-v2) | nearly free (0.26 dB) | Assumed "low impact" — **wrong** | ❌ **hurts: −0.89 dB**, CI [+0.28, +1.51] off−on |
 | **Capacity** sweep | 375 k optimal (*less is more*) | **INVERTS** — an orbit is not sparse-view | ✅ **6 M** optimal (**16×** the Pavillon) |
@@ -21,6 +21,7 @@ does not help · ⏭️ deliberately skipped.
 | **Appearance embeddings** | unlocks multi-clip (+3 dB) | Multi-clip only | ✅ multi-clip · ❌ single-clip tie (−0.09 dB, CI [−0.60, +0.41]) |
 | Bilateral-grid appearance | tie (no spatial variation) | Possible (pro/iPhone vignetting) | ⏭️ low priority |
 | **Pose optimization** | −1 dB (poses already 0.9 px) | Hypothesis falsified — hurts again | ❌ −0.54 dB, CI [−0.71, −0.36] |
+| Multi-clip coverage (+1080p clips) | multi-clip merges | dilutes the 4K detail | ❌ −2.5 dB pt est (n=4, thin) |
 | Capture resolution 2560→native 4K | Pavillon +1.8 dB | sparse orbit: too few views | ❌ −0.72 dB, CI [+0.20,+1.23] 2560-over-4K |
 | Specular head (reflection SH) | n/a | chrome is worst class (−1.9 dB) | ❌ tie overall, chrome slightly worse |
 | **2DGS** surface backend | FAILED, 13 dB (single-sided) | **Works** — a real orbit supplies the normals | ✅ parity w/ 3DGS, `dist_lambda=0` |
@@ -148,6 +149,37 @@ safe to assume and are being measured rather than copied:
    views. Pose refinement is now a negative on *both* captures, and the "poses were
    already too good" explanation does not survive — a better hypothesis is that our
    SE(3) refinement trades multi-view consistency for per-view photometric fit.
+
+## Neither data lever helps this subject: it is view-quality limited
+
+The helmet is data-limited, so both data-side levers were tested. Neither helped, and both
+failed for the same reason.
+
+| lever | change | result on the helmet |
+|---|---|---|
+| **resolution** | 2560 → native 4K | **−0.72 dB** (CI [+0.20, +1.23] for 2560, 13/14 views) |
+| **coverage** | +2 more clips (1080p) | **−2.5 to −3.0 dB** point estimate (4/4 shared views; n=4, so wide CI) |
+
+The coverage run merged cleanly (350/352 registered across three clips, mixed resolution)
+but the loss-masked model, scored on the 4K clip's held-out views, is *worse* than the
+single-clip model. The confound is the finding: the merge is dominated by the long 1080p
+clip (183 of 280 training views), so the helmet's fine detail is now reconstructed largely
+from blurry footage. Adding lower-resolution views does not add usable constraint on the
+high-frequency detail — it dilutes it, the same mechanism by which native 4K hurt.
+
+So the subject is not limited by the *number* of views (172 more made it worse) nor by
+their *resolution* (more made it worse). It is limited by having enough **sharp, well-posed
+views of a nearly featureless reflective surface** — and 108 views of a chrome helmet at
+2560 px is, empirically, the point where every lever we have is flat or negative. The honest
+conclusion is that ~23–24 dB on this subject is the ceiling for plain 3DGS from this capture,
+and beating it needs a *different capture* (matte coating for photogrammetry, a turntable
+with controlled lighting, or many more 4K views), not a different setting.
+
+The caveat on the coverage number is real: only 4 held-out views are shared between the
+single-clip and multi-clip datasets (they overlap only on the 4K clip, periodic-8), so the
+point estimate is clear but not formally significant. It is not worth another run to
+sharpen, because the direction agrees with the resolution result and with the saturated
+model-side sweep.
 
 ## Higher capture resolution makes a sparse-view subject *worse*
 

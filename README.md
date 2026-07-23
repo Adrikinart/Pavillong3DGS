@@ -490,13 +490,23 @@ that single fact retrospectively explains the rest of this case study: why the m
 capacity curve is flat, why the specular head is a null, why 12 M buys nothing. Every
 modelling knob is saturated.
 
-Which means the remaining levers are **data-side** — but the obvious one, resolution, was
-tested and **backfired**. Re-running at native 3840 px scored **0.72 dB below** the 2560
-model on the helmet (matched split, 14 views, CI [+0.20, +1.23], 13/14), with visibly
-*blurrier* renders. At 4K each Gaussian must explain 2.25× more pixels from the same 108
-viewpoints, so the sparse-view fit is more underdetermined and smooths — extra resolution
-needs enough views to constrain it. That leaves **coverage** (three unused clips of the same
-helmet, all 1080p) as the lever still worth trying.
+Which means the remaining levers are **data-side** — and both were tested. Both failed,
+for the same reason:
+
+| lever | change | helmet result |
+|---|---|---|
+| resolution | 2560 → native 4K | **−0.72 dB** (14 views, 13/14, blurrier renders) |
+| coverage | + 2 more clips (1080p) | **−2.5 to −3.0 dB** point estimate (4 shared views, 4/4; n small) |
+
+Native 4K makes each Gaussian explain 2.25× more pixels from the same 108 views, so the
+sparse-view fit smooths. Adding 1080p clips dilutes the 4K detail with blurry views. The
+subject is limited neither by the *number* of views (172 more hurt) nor their *resolution*
+(more hurt) but by having enough **sharp, well-posed views of a nearly featureless chrome
+surface** — and 108 views at 2560 px is where every lever we have goes flat or negative.
+
+**The honest ceiling for this capture is ~23–24 dB on the helmet.** Beating it needs a
+different *capture* — a matte-coated pass for photogrammetry, a lit turntable, or many more
+4K views — not a different setting. Everything settable has been settled.
 Reproduce the ranking with:
 
 ```bash
