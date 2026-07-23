@@ -21,6 +21,7 @@ does not help · ⏭️ deliberately skipped.
 | **Appearance embeddings** | unlocks multi-clip (+3 dB) | Multi-clip only | ✅ multi-clip · ❌ single-clip tie (−0.09 dB, CI [−0.60, +0.41]) |
 | Bilateral-grid appearance | tie (no spatial variation) | Possible (pro/iPhone vignetting) | ⏭️ low priority |
 | **Pose optimization** | −1 dB (poses already 0.9 px) | Hypothesis falsified — hurts again | ❌ −0.54 dB, CI [−0.71, −0.36] |
+| Capture resolution 2560→native 4K | Pavillon +1.8 dB | sparse orbit: too few views | ❌ −0.72 dB, CI [+0.20,+1.23] 2560-over-4K |
 | Specular head (reflection SH) | n/a | chrome is worst class (−1.9 dB) | ❌ tie overall, chrome slightly worse |
 | **2DGS** surface backend | FAILED, 13 dB (single-sided) | **Works** — a real orbit supplies the normals | ✅ parity w/ 3DGS, `dist_lambda=0` |
 | Object box (attract to subject) | n/a | tested | ❌ no sharper helmet + smearing (data-limited) |
@@ -147,6 +148,30 @@ safe to assume and are being measured rather than copied:
    views. Pose refinement is now a negative on *both* captures, and the "poses were
    already too good" explanation does not survive — a better hypothesis is that our
    SE(3) refinement trades multi-view consistency for per-view photometric fit.
+
+## Higher capture resolution makes a sparse-view subject *worse*
+
+The helmet is data-limited, so the natural move is more data — and the first lever tried,
+capture resolution, backfired. Re-running the helmet pipeline at native 3840 px instead
+of 2560, on a matched name-keyed split (14 shared held-out views, scored through one common
+mask and resampled to a common width):
+
+| | 2560 px | native 4K |
+|---|---|---|
+| subject PSNR (interior) | **23.99** | 23.61 |
+| render sharpness (var-Laplacian) | **6.0** | 2.5 |
+
+Paired, 2560 beats 4K by **+0.72 dB (CI [+0.20, +1.23], 13/14 views)**, and the 4K
+renders are measurably *blurrier*, not sharper. This is the sparse-view regime, not a bug: at
+4K each Gaussian must explain 2.25× more pixels from the **same 108 viewpoints**, so the
+per-pixel fit is more underdetermined and the model smooths. Extra source resolution only
+helps if there are enough views to constrain it — which is exactly what the Pavillon had
+(+1.8 dB there) and this capture does not.
+
+It is the direct counterpart to the capacity finding: the Pavillon wanted *fewer* Gaussians
+and *more* resolution; a sparse orbit of a featureless subject wants the opposite of the
+second, for the same underlying reason — too few views to pin down the extra degrees of
+freedom.
 
 ## Specular head: implemented, and it does not help here
 

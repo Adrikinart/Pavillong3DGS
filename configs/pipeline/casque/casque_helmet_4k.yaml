@@ -10,6 +10,15 @@
 # (1600 -> 2560) was worth +1.8 dB and removed the catastrophic-view tail entirely.
 #
 # Costs a fresh SfM (own dataset dir), and 4K frames make COLMAP substantially slower.
+#
+# MEASURED RESULT: 4K does NOT help this subject -- it slightly HURTS. On a matched
+# name-keyed split (14 shared held-out views, common mask, resampled to a common width),
+# native 4K scored 0.72 dB BELOW the 2560 model on the helmet interior (CI [+0.20, +1.23]
+# for 2560-over-4K, 13/14 views), and the 4K renders are measurably blurrier (variance of
+# Laplacian 2.5 vs 6.0). The reason is sparse view, not resolution: at 4K each Gaussian must
+# explain 2.25x more pixels from the SAME 108 viewpoints, so the fit is more underdetermined
+# per pixel and smooths. This config is kept as the reproducible evidence for that, NOT as a
+# recommendation -- use casque_helmet.yaml (2560) for the helmet.
 object_name: casque_orbit_4k          # SHARE the dataset dir: reuses the existing SfM
 capture_mode: orbit
 profile:

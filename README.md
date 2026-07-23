@@ -490,8 +490,13 @@ that single fact retrospectively explains the rest of this case study: why the m
 capacity curve is flat, why the specular head is a null, why 12 M buys nothing. Every
 modelling knob is saturated.
 
-Which means the remaining levers are **data-side** — resolution (the source is 3840 px and
-we were training at 2560) and coverage (three further clips of the same helmet went unused).
+Which means the remaining levers are **data-side** — but the obvious one, resolution, was
+tested and **backfired**. Re-running at native 3840 px scored **0.72 dB below** the 2560
+model on the helmet (matched split, 14 views, CI [+0.20, +1.23], 13/14), with visibly
+*blurrier* renders. At 4K each Gaussian must explain 2.25× more pixels from the same 108
+viewpoints, so the sparse-view fit is more underdetermined and smooths — extra resolution
+needs enough views to constrain it. That leaves **coverage** (three unused clips of the same
+helmet, all 1080p) as the lever still worth trying.
 Reproduce the ranking with:
 
 ```bash
